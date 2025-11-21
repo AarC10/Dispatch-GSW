@@ -1,0 +1,6 @@
+/src/main/java/com/wild_west_rocketry/dispatch_gsw/generated
+/src/main/jniLibs/**/*.so
+/src/main/assets/tauri.conf.json
+/tauri.build.gradle.kts
+/proguard-tauri.pro
+/tauri.properties
