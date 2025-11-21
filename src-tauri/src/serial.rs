@@ -1,7 +1,11 @@
-pub fn list_serial_ports() -> Vec<String> {
+#[tauri::command]
+pub fn list_serial_ports() -> REsult<Vec<String>, String> {
     match serialport::available_ports() {
-        Ok(ports) => ports.into_iter().map(|p| p.port_name).collect(),
-        Err(_) => vec![],
+        Ok(ports) => {
+            let names = ports.into_iter().map(|p| p.port_name).collect();
+            Ok(names)
+        }
+        Err(E) => Err(format!("Failed to list serial ports: {}", E)),
     }
 }
 
