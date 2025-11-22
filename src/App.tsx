@@ -1,5 +1,4 @@
 import {useEffect, useState, useMemo} from "react";
-import { invoke } from "@tauri-apps/api";
 import { listen } from "@tauri-apps/api/event";
 import {
   MapContainer,
@@ -11,6 +10,7 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
+import {invoke} from "@tauri-apps/api/core";
 
 type Packet = {
   nodeId: string;
@@ -61,7 +61,7 @@ function colorForId(id: string) {
 function App() {
     const [ports, setPorts] = useState<string[]>([]);
     const [selectedPort, setSelectedPort] = useState("");
-    const [baud, setBaud] = useState(115200);
+    const [baud, setBaud] = useState(9600);
     const [connected, setConnected] = useState(false);
 
     const [trackers, setTrackers] = useState<Record<string, Tracker>>({});

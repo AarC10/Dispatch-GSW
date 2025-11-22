@@ -3,7 +3,7 @@ use std::thread;
 use std::io::BufRead;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 struct SerialState {
     stop_flag: Option<Arc<AtomicBool>>,
