@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::Emitter;
 
-use crate::deputy_interpreter::{parse_zephyr_line, ParseError};
+use crate::deputy_interpreter::{parse_zephyr_line};
 use crate::telemetry::{DataPacket, FixStatus};
 use serde_json::json;
 
@@ -61,11 +61,11 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
         let mut buf = String::new();
         let mut current: Option<DataPacket> = None;
 
-        let mut emit_packet = |pkt: DataPacket| {
+        let emit_packet = |pkt: DataPacket| {
             let _ = app.emit("serial-packet", pkt);
         };
 
-        let mut merge_packet = |dst: &mut DataPacket, src: DataPacket| {
+        let merge_packet = |dst: &mut DataPacket, src: DataPacket| {
             if src.node_id.is_some() {
                 dst.node_id = src.node_id;
             }
@@ -124,8 +124,6 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
                                     emit_packet(done);
                                 }
                             }
-                        }
-                        Err(ParseError::NoMatch) => {
                         }
                         Err(e) => {
                             let _ = app.emit("serial-parse-error", json!({

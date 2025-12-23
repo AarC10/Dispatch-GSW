@@ -54,6 +54,12 @@ header.toolbar {
   flex-wrap: wrap;
 }
 
+.toolbar-right .controls-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
 .field-group {
   display: flex;
   flex-direction: column;
@@ -66,6 +72,19 @@ header.toolbar {
   color: #cbd5e1;
 }
 
+.field-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative; /* for custom arrow */
+}
+
+.field-inline label {
+  font-size: 12px;
+  color: #cbd5e1;
+  margin-right: 6px;
+}
+
 select,
 input,
 button {
@@ -75,6 +94,76 @@ button {
   padding: 8px 10px;
   border-radius: 6px;
   font-size: 14px;
+}
+
+select {
+  color: #e2e8f0; /* ensure text visible */
+  background: #0b1220; /* slightly different to make contrast */
+}
+
+/* Make the port select more visibly bluish and lighter so white text is readable */
+.field-inline select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background: linear-gradient(180deg, #1e3a8a 0%, #1b4bbf 100%);
+  color: #ffffff;
+  border: 1px solid #2741a8;
+  padding: 8px 32px 8px 12px; /* room for arrow */
+  min-width: 220px;
+  border-radius: 6px;
+}
+
+/* dropdown arrow drawn on the wrapper so it stays visible */
+.field-inline::after {
+  content: '\25BE'; /* small triangle */
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(255,255,255,0.9);
+  pointer-events: none;
+  font-size: 12px;
+}
+
+.field-inline select:focus {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+  border-color: #3b82f6;
+}
+
+.field-inline select option {
+  background: #0f172a; /* dropdown option background (browser may ignore) */
+  color: #e2e8f0;
+}
+
+/* hide native dropdown arrow in IE/Edge */
+.field-inline select::-ms-expand {
+  display: none;
+}
+
+.icon-button {
+  border: 1px solid #1f2937;
+  background: #111827;
+  color: #e2e8f0;
+  padding: 6px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-button svg {
+  display: block;
+}
+
+.icon-button:hover {
+  filter: brightness(1.1);
+}
+
+/* ensure select on focus looks okay */
+select:focus, input:focus, button:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 button {
@@ -165,7 +254,7 @@ tbody tr:hover {
   background: #111827;
 }
 
-.right-column {
+right-column {
   min-width: 280px;
   display: flex;
   flex-direction: column;

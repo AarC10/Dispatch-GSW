@@ -6,7 +6,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug)]
 pub enum ParseError {
     NoMatch,
-    InvalidNumber(String),
 }
 
 fn now_ms() -> i64 {

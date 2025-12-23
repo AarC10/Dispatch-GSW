@@ -170,38 +170,46 @@ function App() {
           <div className="status">{connected ? `Connected to ${selectedPort} @ ${baud}` : "Disconnected"}</div>
         </div>
         <div className="toolbar-right">
-          <div className="field-group">
-            <label>Port</label>
-            <select value={selectedPort} onChange={(e) => setSelectedPort(e.target.value)}>
-              <option value="">Select</option>
-              {ports.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-            <button onClick={refreshPorts}>Refresh</button>
-          </div>
-          <div className="field-group">
-            <label>Baud</label>
-            <input
-              type="number"
-              value={baud}
-              onChange={(e) => setBaud(parseInt(e.target.value || "0", 10))}
-              min={1200}
-              step={1200}
-            />
-          </div>
+          <div className="controls-row">
+            <div className="field-inline">
+              <label>Port</label>
+              <select value={selectedPort} onChange={(e) => setSelectedPort(e.target.value)}>
+                <option value="">Select</option>
+                {ports.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+              <button className="icon-button" title="Refresh ports" onClick={refreshPorts}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M21 12a9 9 0 10-9 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M21 3v6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
 
-          {!connected ? (
-            <button onClick={connect} disabled={!selectedPort} className="primary">
-              Connect
-            </button>
-          ) : (
-            <button onClick={disconnect} className="ghost">
-              Disconnect
-            </button>
-          )}
+            <div className="field-inline">
+              <label>Baud</label>
+              <input
+                type="number"
+                value={baud}
+                onChange={(e) => setBaud(parseInt(e.target.value || "0", 10))}
+                min={1200}
+                step={1200}
+              />
+            </div>
+
+            {!connected ? (
+              <button onClick={connect} disabled={!selectedPort} className="primary">
+                Connect
+              </button>
+            ) : (
+              <button onClick={disconnect} className="ghost">
+                Disconnect
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
