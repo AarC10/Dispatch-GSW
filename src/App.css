@@ -160,6 +160,25 @@ select {
   filter: brightness(1.1);
 }
 
+.icon-small {
+  border: 0;
+  background: transparent;
+  color: #cbd5e1;
+  padding: 4px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-small:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+.bubble.muted {
+  opacity: 0.45;
+}
+
 /* ensure select on focus looks okay */
 select:focus, input:focus, button:focus {
   outline: none;
@@ -213,6 +232,15 @@ section.content {
   padding: 10px 12px;
   border-bottom: 1px solid #1e293b;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .map-card {
