@@ -98,7 +98,7 @@ function App() {
   async function connect() {
     if (!selectedPort) return;
     try {
-      await invoke("open_port", { port_name: selectedPort, baud_rate: baud });
+      await invoke("open_port", { portName: selectedPort, baudRate: baud });
       setConnected(true);
     } catch (e) {
       console.error("open_port failed", e);

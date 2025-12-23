@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Emitter;
 
 use crate::deputy_interpreter::{parse_zephyr_line, ParseError};
+use crate::telemetry::{DataPacket, FixStatus};
 use serde_json::json;
 
 struct SerialState {
@@ -58,6 +59,38 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
     let handle = thread::spawn(move || {
         let mut reader = std::io::BufReader::new(port);
         let mut buf = String::new();
+        let mut current: Option<DataPacket> = None;
+
+        let mut emit_packet = |pkt: DataPacket| {
+            let _ = app.emit("serial-packet", pkt);
+        };
+
+        let mut merge_packet = |dst: &mut DataPacket, src: DataPacket| {
+            if src.node_id.is_some() {
+                dst.node_id = src.node_id;
+            }
+            if src.latitude.is_some() {
+                dst.latitude = src.latitude;
+            }
+            if src.longitude.is_some() {
+                dst.longitude = src.longitude;
+            }
+            if src.satellites_count.is_some() {
+                dst.satellites_count = src.satellites_count;
+            }
+            if src.receiver_rssi.is_some() {
+                dst.receiver_rssi = src.receiver_rssi;
+            }
+            if src.receiver_snr.is_some() {
+                dst.receiver_snr = src.receiver_snr;
+            }
+            if !matches!(src.fix_status, FixStatus::Unknown) {
+                dst.fix_status = src.fix_status;
+            }
+            dst.timestamp_ms = src.timestamp_ms;
+            dst.raw_lines.extend(src.raw_lines);
+        };
+
         while !stop_cloned.load(Ordering::Relaxed) {
             buf.clear();
             match reader.read_line(&mut buf) {
@@ -69,9 +102,28 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
                     // Emit raw line for debug
                     let _ = app.emit("serial-line", line.clone());
 
+                    let is_packet_start = line.to_lowercase().contains("packet received");
+                    let is_fix_line = line.to_lowercase().contains("fix status") || line.to_lowercase().contains("no fix");
+
+                    if is_packet_start {
+                        if let Some(prev) = current.take() {
+                            emit_packet(prev);
+                        }
+                    }
+
                     match parse_zephyr_line(&line) {
-                        Ok(pkt) => {
-                            let _ = app.emit("serial-packet", pkt);
+                        Ok(pkt_part) => {
+                            if let Some(existing) = current.as_mut() {
+                                merge_packet(existing, pkt_part);
+                            } else {
+                                current = Some(pkt_part);
+                            }
+
+                            if is_fix_line {
+                                if let Some(done) = current.take() {
+                                    emit_packet(done);
+                                }
+                            }
                         }
                         Err(ParseError::NoMatch) => {
                         }
@@ -88,6 +140,11 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
                     continue;
                 }
             }
+        }
+
+        // Flush pending packets on shutdown
+        if let Some(pending) = current.take() {
+            emit_packet(pending);
         }
     });
 
