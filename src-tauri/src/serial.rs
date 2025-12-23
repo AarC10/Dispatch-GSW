@@ -5,6 +5,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::Emitter;
 
+use crate::deputy_interpreter::{parse_zephyr_line, ParseError};
+use serde_json::json;
+
 struct SerialState {
     stop_flag: Option<Arc<AtomicBool>>,
     handle: Option<thread::JoinHandle<()>>,
@@ -63,7 +66,22 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
                 }
                 Ok(_) => {
                     let line = buf.trim_end_matches(&['\r', '\n'][..]).to_string();
-                    let _ = app.emit("serial-line", line);
+                    // Emit raw line for debug
+                    let _ = app.emit("serial-line", line.clone());
+
+                    match parse_zephyr_line(&line) {
+                        Ok(pkt) => {
+                            let _ = app.emit("serial-packet", pkt);
+                        }
+                        Err(ParseError::NoMatch) => {
+                        }
+                        Err(e) => {
+                            let _ = app.emit("serial-parse-error", json!({
+                                "line": line,
+                                "error": format!("{e:?}"),
+                            }));
+                        }
+                    }
                 }
                 Err(_) => {
                     // Just loop and check stop flag if theres an err

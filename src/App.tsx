@@ -59,8 +59,8 @@ function fixFromString(s?: string): FixStatus | undefined {
   return "UNKNOWN";
 }
 
-function parseZephyrLine(line: string): TelemetryPacket | null {
-
+function parseZephyrLine(_line: string): TelemetryPacket | null {
+  return null;
 }
 
 function ZoomToLatest({ trackers }: { trackers: Record<string, Tracker> }) {
@@ -123,10 +123,20 @@ function App() {
     let unlisten: (() => Promise<void>) | null = null;
     (async () => {
       try {
-        const l = await listen<string>("serial-line", (event) => {
-          const line = event.payload;
-          const pkt = parseZephyrLine(line);
-          if (!pkt) return;
+        const l = await listen<any>("serial-packet", (event) => {
+          const pktRaw = event.payload as any;
+          if (!pktRaw) return;
+          const pkt: TelemetryPacket = {
+            nodeId: String(pktRaw.node_id ?? "unknown"),
+            lat: pktRaw.latitude ?? undefined,
+            lng: pktRaw.longitude ?? undefined,
+            rssi: pktRaw.receiver_rssi ?? undefined,
+            snr: pktRaw.receiver_snr ?? undefined,
+            fixStatus: fixFromString(pktRaw.fix_status),
+            sats: pktRaw.satellites_count ?? undefined,
+            ts: pktRaw.timestamp_ms ?? Date.now(),
+            raw: (pktRaw.raw_lines && pktRaw.raw_lines.join("\n")) || undefined,
+          };
 
           setPackets((prev) => [pkt, ...prev].slice(0, 500));
           setTrackers((prev) => {
