@@ -253,12 +253,12 @@ function App() {
                 <thead>
                   <tr>
                     <th>Node</th>
-                    <th>Lat</th>
-                    <th>Lon</th>
-                    <th>RSSI</th>
-                    <th>SNR</th>
+                    <th>Latitude</th>
+                    <th>Longitude</th>
+                    <th>RSSI (dBm)</th>
+                    <th>SNR (dB)</th>
                     <th>Fix</th>
-                    <th>Sats</th>
+                    <th>Satellites In View</th>
                     <th>Time</th>
                   </tr>
                 </thead>
@@ -299,7 +299,7 @@ function App() {
                       {latest ? (
                         <div className="bubble-body">
                           <div className="bubble-row">
-                            <span>Lat/Lng</span>
+                            <span>Latitude/Longitude</span>
                             <span>
                               {latest.lat !== undefined ? latest.lat.toFixed(6) : "—"},{" "}
                               {latest.lng !== undefined ? latest.lng.toFixed(6) : "—"}
@@ -308,11 +308,11 @@ function App() {
                           <div className="bubble-row">
                             <span>RSSI / SNR</span>
                             <span>
-                              {latest.rssi ?? "—"} / {latest.snr ?? "—"}
+                              {latest.rssi ?? "—"} dBm / {latest.snr ?? "—"} dB
                             </span>
                           </div>
                           <div className="bubble-row">
-                            <span>Fix / Sats</span>
+                            <span>Fix Status / Satellites In View</span>
                             <span>
                               {latest.fixStatus ?? "?"} / {latest.sats ?? "—"}
                             </span>
