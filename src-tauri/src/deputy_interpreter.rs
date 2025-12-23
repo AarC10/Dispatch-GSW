@@ -17,11 +17,12 @@ fn now_ms() -> i64 {
 
 pub fn parse_zephyr_line(line: &str) -> Result<DataPacket, ParseError> {
     lazy_static! {
-        static ref RE_NODE: Regex = Regex::new(r"(?i)node\s*id[:=]?\s*(\d+)").unwrap();
+        static ref RE_NODE: Regex = Regex::new(r"(?i)node\s*[:=]?\s*(\d+)").unwrap();
         static ref RE_LAT: Regex = Regex::new(r"(?i)lat(?:itude)?[:=]?\s*(-?\d+\.\d+)").unwrap();
         static ref RE_LON: Regex = Regex::new(r"(?i)lon(?:gitude)?[:=]?\s*(-?\d+\.\d+)").unwrap();
         static ref RE_RSSI: Regex = Regex::new(r"(?i)rssi[:=]?\s*(-?\d+)").unwrap();
         static ref RE_SNR: Regex = Regex::new(r"(?i)snr[:=]?\s*(-?\d+)").unwrap();
+        static ref RE_RSSI_SNR: Regex = Regex::new(r"(?i)\(\s*\d+\s*bytes\s*\|\s*(-?\d+)\s*dBm\s*\|\s*(-?\d+)\s*dB").unwrap();
         static ref RE_SATS: Regex = Regex::new(r"(?i)sats?(?:ellites)?[:=]?\s*(\d+)").unwrap();
         static ref RE_FIX: Regex = Regex::new(r"(?i)fix\s*status[:=]?\s*([A-Z]+)").unwrap();
         static ref RE_NOFIX: Regex = Regex::new(r"(?i)no\s*fix").unwrap();
@@ -42,12 +43,20 @@ pub fn parse_zephyr_line(line: &str) -> Result<DataPacket, ParseError> {
     if let Some(cap) = RE_LON.captures(line) {
         pkt.longitude = cap.get(1).and_then(|m| m.as_str().parse::<f32>().ok());
     }
-    if let Some(cap) = RE_RSSI.captures(line) {
+
+    if let Some(cap) = RE_RSSI_SNR.captures(line) {
         pkt.receiver_rssi = cap.get(1).and_then(|m| m.as_str().parse::<i16>().ok());
+        pkt.receiver_snr = cap.get(2).and_then(|m| m.as_str().parse::<i8>().ok());
+    } else {
+        // Fallback if no combined match
+        if let Some(cap) = RE_RSSI.captures(line) {
+            pkt.receiver_rssi = cap.get(1).and_then(|m| m.as_str().parse::<i16>().ok());
+        }
+        if let Some(cap) = RE_SNR.captures(line) {
+            pkt.receiver_snr = cap.get(1).and_then(|m| m.as_str().parse::<i8>().ok());
+        }
     }
-    if let Some(cap) = RE_SNR.captures(line) {
-        pkt.receiver_snr = cap.get(1).and_then(|m| m.as_str().parse::<i8>().ok());
-    }
+
     if let Some(cap) = RE_SATS.captures(line) {
         pkt.satellites_count = cap.get(1).and_then(|m| m.as_str().parse::<u8>().ok());
     }
