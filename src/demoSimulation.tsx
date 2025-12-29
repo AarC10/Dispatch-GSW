@@ -47,10 +47,10 @@ export function useDemoSimulation(processPacket: (packet: DemoPacket) => void) {
     const now = Date.now();
     const slotIdx = demoSlotRef.current % DEMO_SCHEDULE.length;
     const nodeId = DEMO_SCHEDULE[slotIdx];
+    const baseRssi = randomInt(-80, -40);
+    const baseSnr = randomInt(-5, 20);
 
     if (nodeId !== "VOID") {
-      const baseRssi = randomInt(-80, -40);
-      const baseSnr = randomInt(-5, 20);
       const current = positionsRef.current[nodeId] ?? {
         lat: DEMO_BASE_LAT + randomFloat(-0.005, 0.005),
         lon: DEMO_BASE_LON + randomFloat(-0.005, 0.005),
@@ -76,7 +76,7 @@ export function useDemoSimulation(processPacket: (packet: DemoPacket) => void) {
         lat: nextLat,
         lon: nextLon,
         fixStatus: "FIX",
-        sats: 8 + slotIdx,
+        sats: randomInt(5, 14),
         rssi: baseRssi + randomInt(-20, 20),
         snr: baseSnr + randomInt(-5, 5),
         ts: now,
@@ -85,6 +85,8 @@ export function useDemoSimulation(processPacket: (packet: DemoPacket) => void) {
       processPacket({
         nodeId: "VOID",
         fixStatus: "NOFIX",
+        rssi: baseRssi + randomInt(-20, 20),
+        snr: baseSnr + randomInt(-5, 5),
         ts: now,
       });
     }
