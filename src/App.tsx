@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useMemo, useState, type DragEvent} from "react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap, } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
@@ -80,7 +81,6 @@ function App() {
   const [hideAllTrackers, setHideAllTrackers] = useState(false);
   const [trackerOrder, setTrackerOrder] = useState<string[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [setDragOverId] = useState<string | null>(null);
 
   const processPacket = useCallback((packet: TelemetryPacket) => {
     setTrackerColors((prev) => {
@@ -111,7 +111,6 @@ function App() {
   }, []);
   const handleDragEnd = useCallback(() => {
     setDraggingId(null);
-    setDragOverId(null);
   }, []);
   const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>, targetId: string) => {
     if (!draggingId || draggingId === targetId) return;
@@ -128,18 +127,42 @@ function App() {
       next.splice(insertIdx, 0, draggingId);
       return next.join("|") === prev.join("|") ? prev : next;
     });
-    setDragOverId(targetId);
   }, [draggingId]);
-  const handleDragLeave = useCallback(() => setDragOverId(null), []);
+  const handleDragLeave = useCallback(() => {}, []);
   const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDraggingId(null);
-    setDragOverId(null);
   }, []);
 
   function clearPackets() {
     setPackets([]);
   }
+
+  function savePacketsCsv() {
+    if (packets.length === 0) return;
+    const payload = packets.map((packet) => ({
+      node_id: packet.nodeId,
+      lat: packet.lat,
+      lon: packet.lon,
+      rssi: packet.rssi,
+      snr: packet.snr,
+      fix_status: packet.fixStatus,
+      sats: packet.sats,
+      ts: packet.ts,
+    }));
+    const defaultName = `packets-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+    save({ defaultPath: defaultName, filters: [{ name: "CSV", extensions: ["csv"] }] })
+      .then((path) => {
+        if (!path) throw new Error("Save canceled");
+        return invoke<string>("export_packets_csv", { packets: payload, path });
+      })
+      .then((path) => {
+        console.log("Saved packets CSV to", path);
+      })
+      .catch((err) => {
+        console.error("Failed to save CSV", err);
+      });
+   }
 
   function toggleTrackerHidden(nodeId: string) {
     setHiddenTrackers((prev) => {
@@ -323,20 +346,30 @@ function App() {
             <div className="card-header">
               <span>Latest packets</span>
               <div className="header-actions">
-                <button className="icon-button" title="Clear latest packets" onClick={clearPackets}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M10 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <button className="icon-button button-success" title="Save packets to CSV" onClick={savePacketsCsv}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: 6 }}>
+                    <path d="M5 5h11l3 3v11H5V5Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M9 5v4h6V5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M9 17h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
+                  Save
                 </button>
+                <button className="icon-button button-danger" title="Clear latest packets" onClick={clearPackets}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: 6 }}>
+                     <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                     <path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                     <path d="M10 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                     <path d="M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                   </svg>
+                   Clear
+                 </button>
               </div>
             </div>
              <div className="table-wrap">
                <table>
                  <thead>
                    <tr>
+                     <th>Time</th>
                      <th>Node</th>
                      <th>Latitude</th>
                      <th>Longitude</th>
@@ -344,12 +377,12 @@ function App() {
                      <th>SNR (dB)</th>
                      <th>Fix</th>
                      <th>Satellites in View</th>
-                     <th>Time</th>
                    </tr>
                  </thead>
                  <tbody>
                    {packets.map((packet) => (
                      <tr key={`${packet.ts}-${packet.nodeId}`}>
+                       <td>{new Date(packet.ts).toLocaleTimeString()}</td>
                        <td>{packet.nodeId}</td>
                        <td>{packet.lat === undefined ? "—" : packet.lat.toFixed(6)}</td>
                        <td>{packet.lon === undefined ? "—" : packet.lon.toFixed(6)}</td>
@@ -357,7 +390,6 @@ function App() {
                        <td>{packet.snr ?? "—"}</td>
                        <td>{packet.fixStatus ?? "?"}</td>
                        <td>{packet.sats ?? "—"}</td>
-                       <td>{new Date(packet.ts).toLocaleTimeString()}</td>
                      </tr>
                    ))}
                  </tbody>

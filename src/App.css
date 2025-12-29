@@ -195,6 +195,19 @@ button.primary {
   border-color: #2563eb;
 }
 
+button.button-success {
+  background: #16a34a;
+  border-color: #15803d;
+  color: #e2e8f0;
+}
+
+button.button-danger,
+.icon-button.button-danger {
+  background: #991b1b;
+  border-color: #7f1d1d;
+  color: #fef2f2;
+}
+
 button.ghost {
   background: transparent;
   border-color: #334155;
