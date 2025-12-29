@@ -49,7 +49,9 @@ function colorForId(id: string) {
     "#999999",
   ];
   let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.codePointAt(i)) >>> 0;
+  for (let i = 0; i < id.length; i++) { // @ts-ignore
+    h = (h * 31 + id.codePointAt(i)) >>> 0;
+  }
   return palette[h % palette.length];
 }
 
