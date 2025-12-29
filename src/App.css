@@ -295,27 +295,69 @@ right-column {
 }
 
 .bubble-list {
-  padding: 12px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  flex: 1;
+  position: relative;
 }
 
 .bubble {
-  background: #111827;
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  align-items: stretch;
   border: 1px solid #1f2937;
   border-radius: 8px;
+  padding: 0;
+  background: #0b1220;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.bubble-handle {
+  width: 14px;
+  background: linear-gradient(180deg, #2d3748 0%, #1f2937 100%);
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+  cursor: grab;
+  position: relative;
+}
+
+.bubble-handle::after {
+  content: "";
+  position: absolute;
+  inset: 4px 3px;
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255,255,255,0.4),
+    rgba(255,255,255,0.4) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  opacity: 0.8;
+}
+
+.bubble-handle:active {
+  cursor: grabbing;
+  background: #475569;
+}
+
+.bubble.dragging .bubble-handle {
+  background: #3b82f6;
+}
+
+.bubble-content {
+  display: flex;
+  flex-direction: column;
   padding: 10px;
+  gap: 6px;
 }
 
 .bubble-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-left: 8px;
-  margin-bottom: 6px;
+  padding-left: 12px;
+  margin-bottom: 4px;
 }
 
 .bubble-title {

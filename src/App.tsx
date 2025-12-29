@@ -99,6 +99,7 @@ function App() {
   const [hideAllTrackers, setHideAllTrackers] = useState(false);
   const [trackerOrder, setTrackerOrder] = useState<string[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   const demoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const demoPhaseRef = useRef(0);
@@ -200,27 +201,33 @@ function App() {
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", id);
   }, []);
-  const handleDragEnd = useCallback(() => setDraggingId(null), []);
-  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+  const handleDragEnd = useCallback(() => {
+    setDraggingId(null);
+    setDragOverId(null);
+  }, []);
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>, targetId: string) => {
+    if (!draggingId || draggingId === targetId) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
+    setTrackerOrder((prev) => {
+      const dragIndex = prev.indexOf(draggingId);
+      const targetIndex = prev.indexOf(targetId);
+      if (dragIndex === -1 || targetIndex === -1) return prev;
+      const without = prev.filter((id) => id !== draggingId);
+      const targetIdxInWithout = without.indexOf(targetId);
+      const insertIdx = dragIndex < targetIndex ? targetIdxInWithout + 1 : targetIdxInWithout;
+      const next = [...without];
+      next.splice(insertIdx, 0, draggingId);
+      return next.join("|") === prev.join("|") ? prev : next;
+    });
+    setDragOverId(targetId);
+  }, [draggingId]);
+  const handleDragLeave = useCallback(() => setDragOverId(null), []);
+  const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDraggingId(null);
+    setDragOverId(null);
   }, []);
-  const handleDrop = useCallback(
-    (e: DragEvent<HTMLDivElement>, targetId: string) => {
-      e.preventDefault();
-      const activeId = draggingId ?? e.dataTransfer.getData("text/plain");
-      if (!activeId || activeId === targetId) return;
-      setTrackerOrder((prev) => {
-        const next = prev.filter((id) => id !== activeId);
-        const targetIdx = next.indexOf(targetId);
-        if (targetIdx === -1) next.push(activeId);
-        else next.splice(targetIdx, 0, activeId);
-        return next;
-      });
-      setDraggingId(null);
-    },
-    [draggingId]
-  );
 
   async function connect() {
     if (!selectedPort) return;
@@ -455,65 +462,73 @@ function App() {
                  .map((t) => {
                    const latest = t!.latest;
                    const color = colorForId(t!.nodeId);
-                   const isHidden = hiddenTrackers.has(t!.nodeId) || hideAllTrackers;
+                   const isHidden = hiddenTrackers.has(t.nodeId) || hideAllTrackers;
                     return (
-                     <div
-                       className={`bubble ${isHidden ? 'muted' : ''}`}
-                       key={t!.nodeId}
-                       draggable
-                       onDragStart={(e) => handleDragStart(e, t!.nodeId)}
-                        onDragEnd={handleDragEnd}
-                        onDragOver={handleDragOver}
-                       onDrop={(e) => handleDrop(e, t!.nodeId)}
-                     >
-                        <div className="bubble-header" style={{ borderLeft: `6px solid ${color}` }}>
-                          <div className="bubble-title">{t.nodeId}</div>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <div className="bubble-time">{latest ? new Date(latest.ts).toLocaleTimeString() : "—"}</div>
-                            <button className="icon-small" title={isHidden ? 'Unhide tracker' : 'Hide tracker'} onClick={() => toggleTrackerHidden(t.nodeId)}>
-                              {isHidden ? (
-                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                                 <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                               </svg>
-                             ) : (
-                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                 <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.57 21.57 0 0 1 5.06-6.06" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                                 <path d="M1 1l22 22" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                               </svg>
-                             )}
-                            </button>
+                     <div key={t.nodeId}>
+                       <div
+                         className={`bubble ${isHidden ? 'muted' : ''} ${draggingId === t.nodeId ? 'dragging' : ''}`}
+                         onDragOver={(e) => handleDragOver(e, t.nodeId)}
+                         onDragLeave={handleDragLeave}
+                         onDrop={handleDrop}
+                       >
+                         <div
+                           className="bubble-handle"
+                           draggable
+                           title="Drag to reorder"
+                           onDragStart={(e) => handleDragStart(e, t.nodeId)}
+                           onDragEnd={handleDragEnd}
+                         />
+                         <div className="bubble-content">
+                          <div className="bubble-header" style={{ borderLeft: `6px solid ${color}` }}>
+                            <div className="bubble-title">{t.nodeId}</div>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <div className="bubble-time">{latest ? new Date(latest.ts).toLocaleTimeString() : "—"}</div>
+                              <button className="icon-small" title={isHidden ? 'Unhide tracker' : 'Hide tracker'} onClick={() => toggleTrackerHidden(t.nodeId)}>
+                                {isHidden ? (
+                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                   <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                 </svg>
+                               ) : (
+                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                   <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.57 21.57 0 0 1 5.06-6.06" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                   <path d="M1 1l22 22" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                 </svg>
+                               )}
+                              </button>
+                            </div>
                           </div>
-                        </div>
 
-                     {latest ? (
-                       <div className="bubble-body">
-                         <div className="bubble-row">
-                           <span>Latitude/Longitude</span>
-                           <span>
-                             {latest.lat === undefined ? "—" : latest.lat.toFixed(6)},
-                              {latest.lon === undefined ? "—" : latest.lon.toFixed(6)}
-                            </span>
+                       {latest ? (
+                         <div className="bubble-body">
+                           <div className="bubble-row">
+                             <span>Latitude/Longitude</span>
+                             <span>
+                               {latest.lat === undefined ? "—" : latest.lat.toFixed(6)},
+                                {latest.lon === undefined ? "—" : latest.lon.toFixed(6)}
+                              </span>
+                            </div>
+                            <div className="bubble-row">
+                              <span>RSSI / SNR</span>
+                              <span>
+                                {latest.rssi ?? "—"} dBm / {latest.snr ?? "—"} dB
+                              </span>
+                            </div>
+                            <div className="bubble-row">
+                              <span>Fix Status / Satellites in View</span>
+                              <span>
+                                {latest.fixStatus ?? "?"} / {latest.sats ?? "—"}
+                              </span>
+                            </div>
                           </div>
-                          <div className="bubble-row">
-                            <span>RSSI / SNR</span>
-                            <span>
-                              {latest.rssi ?? "—"} dBm / {latest.snr ?? "—"} dB
-                            </span>
-                          </div>
-                          <div className="bubble-row">
-                            <span>Fix Status / Satellites in View</span>
-                            <span>
-                              {latest.fixStatus ?? "?"} / {latest.sats ?? "—"}
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bubble-body">No data</div>
-                      )}
-                    </div>
-                  );
-                })}
+                        ) : (
+                          <div className="bubble-body">No data</div>
+                        )}
+                         </div>
+                       </div>
+                      </div>
+                    );
+                  })}
             </div>
           </div>
         </aside>
