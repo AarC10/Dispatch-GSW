@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
   CircleMarker,
@@ -17,7 +17,7 @@ type FixStatus = "NOFIX" | "FIX" | "DIFF" | "EST" | "UNKNOWN";
 type TelemetryPacket = {
   nodeId: string;
   lat?: number;
-  lng?: number;
+  lon?: number;
   rssi?: number;
   snr?: number;
   fixStatus?: FixStatus;
@@ -28,9 +28,20 @@ type TelemetryPacket = {
 
 type Tracker = {
   nodeId: string;
-  points: { lat: number; lng: number; ts: number }[];
+  points: { lat: number; lon: number; ts: number }[];
   latest?: TelemetryPacket;
 };
+
+const DEMO_PORT = "URRG DEMO";
+// URRG Landing Area 42.705122, -77.190666
+const DEMO_BASE_LAT = 42.705122;
+const DEMO_BAS_LON = -77.190666;
+const DEMO_TRACKER_CONFIGS = [
+  { nodeId: "RISK", offset: 0, radius: 0.0009 },
+  { nodeId: "OTIS", offset: Math.PI / 2, radius: 0.00075 },
+  { nodeId: "OMEN", offset: Math.PI, radius: 0.0006 },
+  { nodeId: "KONG", offset: (3 * Math.PI) / 2, radius: 0.00085 },
+] as const;
 
 function colorForId(id: string) {
   const palette = [
@@ -59,22 +70,24 @@ function fixFromString(s?: string): FixStatus | undefined {
   return "UNKNOWN";
 }
 
-function parseZephyrLine(_line: string): TelemetryPacket | null {
-  return null;
-}
-
 function ZoomToLatest({ trackers }: { trackers: Record<string, Tracker> }) {
   const map = useMap();
   useEffect(() => {
     const all = Object.values(trackers)
-      .map((t) => t.latest)
-      .filter((p): p is TelemetryPacket => Boolean(p && p.lat !== undefined && p.lng !== undefined));
+      .map((tracker) => tracker.latest)
+      .filter((packet): packet is TelemetryPacket => Boolean(packet && packet.lat !== undefined && packet.lon !== undefined));
     if (all.length === 0) return;
     const latest = all.reduce((a, b) => (a.ts > b.ts ? a : b));
-    map.setView([latest.lat!, latest.lng!], Math.max(map.getZoom(), 5));
+    map.setView([latest.lat!, latest.lon!], Math.max(map.getZoom(), 5));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(Object.keys(trackers).map((k) => trackers[k].latest?.ts))]);
   return null;
+}
+
+function randomInt(min: number, max: number) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function App() {
@@ -87,6 +100,65 @@ function App() {
   const [packets, setPackets] = useState<TelemetryPacket[]>([]);
   const [hiddenTrackers, setHiddenTrackers] = useState<Set<string>>(new Set());
   const [hideAllTrackers, setHideAllTrackers] = useState(false);
+
+  const demoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const demoPhaseRef = useRef(0);
+
+  const processPacket = useCallback((packet: TelemetryPacket) => {
+    setPackets((prev) => [packet, ...prev].slice(0, 500));
+    setTrackers((prev) => {
+      const next = { ...prev } as Record<string, Tracker>;
+      const tracker = next[packet.nodeId] ?? { nodeId: packet.nodeId, points: [] };
+      if (packet.lat !== undefined && packet.lon !== undefined) {
+        tracker.points = [...tracker.points, { lat: packet.lat, lon: packet.lon, ts: packet.ts }].slice(-200);
+      }
+      tracker.latest = packet;
+      next[packet.nodeId] = tracker;
+      return next;
+    });
+  }, []);
+
+  const stopDemo = useCallback(() => {
+    if (demoTimerRef.current) {
+      clearInterval(demoTimerRef.current);
+      demoTimerRef.current = null;
+    }
+  }, []);
+
+  const emitDemoPackets = useCallback(() => {
+    const now = Date.now();
+    const phase = demoPhaseRef.current;
+    DEMO_TRACKER_CONFIGS.forEach((cfg, idx) => {
+      const angle = phase + cfg.offset;
+      const radius = cfg.radius + Math.sin(phase + idx * 0.7) * 0.00015;
+      const baseRssi = randomInt(-80, -40);
+      const baseSnr = randomInt(-5, 20);
+
+      processPacket({
+        nodeId: cfg.nodeId,
+        lat: DEMO_BASE_LAT + radius * Math.cos(angle),
+        lon: DEMO_BAS_LON + radius * Math.sin(angle),
+        fixStatus: "FIX",
+        sats: 8 + idx,
+        rssi: baseRssi + randomInt(-20, 20),
+        snr: baseSnr + randomInt(-5, 5),
+        ts: now,
+      });
+    });
+    processPacket({
+      nodeId: "VOID",
+      fixStatus: "NOFIX",
+      ts: now,
+    });
+    demoPhaseRef.current = (phase + Math.PI / 24) % (Math.PI * 2);
+  }, [processPacket]);
+
+  const startDemo = useCallback(() => {
+    stopDemo();
+    demoPhaseRef.current = 0;
+    emitDemoPackets();
+    demoTimerRef.current = setInterval(emitDemoPackets, 1200);
+  }, [emitDemoPackets, stopDemo]);
 
   async function refreshPorts() {
     try {
@@ -116,6 +188,11 @@ function App() {
 
   async function connect() {
     if (!selectedPort) return;
+    if (selectedPort === DEMO_PORT) {
+      startDemo();
+      setConnected(true);
+      return;
+    }
     try {
       await invoke("open_port", { portName: selectedPort, baudRate: baud });
       setConnected(true);
@@ -126,10 +203,13 @@ function App() {
   }
 
   async function disconnect() {
-    try {
-      await invoke("close_port");
-    } catch (e) {
-      console.warn("close_port failed", e);
+    stopDemo();
+    if (selectedPort !== DEMO_PORT) {
+      try {
+        await invoke("close_port");
+      } catch (e) {
+        console.warn("close_port failed", e);
+      }
     }
     setConnected(false);
   }
@@ -139,7 +219,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    let unlisten: (() => Promise<void>) | null = null;
+    let unlisten: UnlistenFn | null = null;
     (async () => {
       try {
         const l = await listen<any>("serial-packet", (event) => {
@@ -148,7 +228,7 @@ function App() {
           const pkt: TelemetryPacket = {
             nodeId: String(pktRaw.node_id ?? "unknown"),
             lat: pktRaw.latitude ?? undefined,
-            lng: pktRaw.longitude ?? undefined,
+            lon: pktRaw.longitude ?? undefined,
             rssi: pktRaw.receiver_rssi ?? undefined,
             snr: pktRaw.receiver_snr ?? undefined,
             fixStatus: fixFromString(pktRaw.fix_status),
@@ -156,18 +236,7 @@ function App() {
             ts: pktRaw.timestamp_ms ?? Date.now(),
             raw: (pktRaw.raw_lines && pktRaw.raw_lines.join("\n")) || undefined,
           };
-
-          setPackets((prev) => [pkt, ...prev].slice(0, 500));
-          setTrackers((prev) => {
-            const next = { ...prev } as Record<string, Tracker>;
-            const t = next[pkt.nodeId] ?? { nodeId: pkt.nodeId, points: [] };
-            if (pkt.lat !== undefined && pkt.lng !== undefined) {
-              t.points = [...t.points, { lat: pkt.lat, lng: pkt.lng, ts: pkt.ts }].slice(-200);
-            }
-            t.latest = pkt;
-            next[pkt.nodeId] = t;
-            return next;
-          });
+          processPacket(pkt);
         });
         unlisten = l;
       } catch (e) {
@@ -177,16 +246,25 @@ function App() {
     return () => {
       if (unlisten) unlisten();
     };
-  }, []);
+  }, [processPacket]);
+
+  useEffect(() => {
+    return () => stopDemo();
+  }, [stopDemo]);
 
   const trackersMemo = useMemo(() => trackers, [JSON.stringify(trackers)]);
+  const statusText = connected
+    ? selectedPort === DEMO_PORT
+      ? "Connected to URRG Demo"
+      : `Connected to ${selectedPort} @ ${baud}`
+    : "Disconnected";
 
   return (
     <main className="layout">
       <header className="toolbar">
         <div className="toolbar-left">
           <h2>Dispatch</h2>
-          <div className="status">{connected ? `Connected to ${selectedPort} @ ${baud}` : "Disconnected"}</div>
+          <div className="status">{statusText}</div>
         </div>
         <div className="toolbar-right">
           <div className="controls-row">
@@ -194,6 +272,7 @@ function App() {
               <label>Port</label>
               <select value={selectedPort} onChange={(e) => setSelectedPort(e.target.value)}>
                 <option value="">Select</option>
+                <option value={DEMO_PORT}>URRG Demo Simulation</option>
                 {ports.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -241,19 +320,19 @@ function App() {
               <ZoomToLatest trackers={trackersMemo} />
               {Object.values(trackers).map((t) => {
                 const color = colorForId(t.nodeId);
-                const latlngs = t.points.map((pt) => [pt.lat, pt.lng] as [number, number]);
+                const latlons = t.points.map((point) => [point.lat, point.lon] as [number, number]);
                 const latest = t.latest;
                 const isHidden = hiddenTrackers.has(t.nodeId) || hideAllTrackers;
                  return (
                    <div key={t.nodeId}>
-                     {!isHidden && latlngs.length > 1 && <Polyline positions={latlngs} color={color} weight={3} />}
-                     {!isHidden && latest && latest.lat !== undefined && latest.lng !== undefined && (
-                       <CircleMarker center={[latest.lat, latest.lng]} pathOptions={{ color: color, fillColor: color }} radius={8}>
+                     {!isHidden && latlons.length > 1 && <Polyline positions={latlons} color={color} weight={3} />}
+                     {!isHidden && latest && latest.lat !== undefined && latest.lon !== undefined && (
+                       <CircleMarker center={[latest.lat, latest.lon]} pathOptions={{ color: color, fillColor: color }} radius={8}>
                          <Popup>
                            <div className="popup">
                              <strong>{t.nodeId}</strong>
                              <div>
-                               {latest.lat.toFixed(6)}, {latest.lng.toFixed(6)}
+                               {latest.lat.toFixed(6)}, {latest.lon.toFixed(6)}
                              </div>
                              <div>RSSI: {latest.rssi ?? "—"} SNR: {latest.snr ?? "—"}</div>
                              <div>Fix: {latest.fixStatus ?? "?"} Sats: {latest.sats ?? "—"}</div>
@@ -296,16 +375,16 @@ function App() {
                    </tr>
                  </thead>
                  <tbody>
-                   {packets.map((p) => (
-                     <tr key={`${p.ts}-${p.nodeId}`}>
-                       <td>{p.nodeId}</td>
-                       <td>{p.lat !== undefined ? p.lat.toFixed(6) : "—"}</td>
-                       <td>{p.lng !== undefined ? p.lng.toFixed(6) : "—"}</td>
-                       <td>{p.rssi ?? "—"}</td>
-                       <td>{p.snr ?? "—"}</td>
-                       <td>{p.fixStatus ?? "?"}</td>
-                       <td>{p.sats ?? "—"}</td>
-                       <td>{new Date(p.ts).toLocaleTimeString()}</td>
+                   {packets.map((packet) => (
+                     <tr key={`${packet.ts}-${packet.nodeId}`}>
+                       <td>{packet.nodeId}</td>
+                       <td>{packet.lat !== undefined ? packet.lat.toFixed(6) : "—"}</td>
+                       <td>{packet.lon !== undefined ? packet.lon.toFixed(6) : "—"}</td>
+                       <td>{packet.rssi ?? "—"}</td>
+                       <td>{packet.snr ?? "—"}</td>
+                       <td>{packet.fixStatus ?? "?"}</td>
+                       <td>{packet.sats ?? "—"}</td>
+                       <td>{new Date(packet.ts).toLocaleTimeString()}</td>
                      </tr>
                    ))}
                  </tbody>
@@ -369,7 +448,7 @@ function App() {
                            <span>Latitude/Longitude</span>
                            <span>
                              {latest.lat !== undefined ? latest.lat.toFixed(6) : "—"},{" "}
-                             {latest.lng !== undefined ? latest.lng.toFixed(6) : "—"}
+                             {latest.lon !== undefined ? latest.lon.toFixed(6) : "—"}
                            </span>
                          </div>
                          <div className="bubble-row">
