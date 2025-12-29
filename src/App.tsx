@@ -63,7 +63,7 @@ function ZoomToLatest({ trackers }: { trackers: Record<string, Tracker> }) {
       .filter((packet): packet is TelemetryPacket => Boolean(packet?.lat !== undefined && packet.lon !== undefined));
     if (all.length === 0) return;
     const latest = all.reduce((a, b) => (a.ts > b.ts ? a : b));
-    map.setView([latest.lat!, latest.lon!], Math.max(map.getZoom(), 5));
+    map.setView([latest.lat!, latest.lon!], Math.max(map.getZoom(), 15  ));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(Object.keys(trackers).map((k) => trackers[k].latest?.ts))]);
   return null;
