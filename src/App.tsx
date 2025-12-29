@@ -26,7 +26,7 @@ type Tracker = {
   latest?: TelemetryPacket;
 };
 
-function colorForId(id: string) {
+function colorForIndex(idx: number) {
   const palette = [
     "#e41a1c",
     "#377eb8",
@@ -38,11 +38,9 @@ function colorForId(id: string) {
     "#f781bf",
     "#999999",
   ];
-  let h = 0;
-  for (let i = 0; i < id.length; i++) { // @ts-ignore
-    h = (h * 31 + id.codePointAt(i)) >>> 0;
-  }
-  return palette[h % palette.length];
+  if (idx < palette.length) return palette[idx];
+  const hue = (idx * 137.508) % 360; // golden angle to spread hues
+  return `hsl(${hue}, 70%, 50%)`;
 }
 
 function fixFromString(s?: string): FixStatus | undefined {
@@ -77,13 +75,19 @@ function App() {
 
   const [trackers, setTrackers] = useState<Record<string, Tracker>>({});
   const [packets, setPackets] = useState<TelemetryPacket[]>([]);
+  const [trackerColors, setTrackerColors] = useState<Record<string, string>>({});
   const [hiddenTrackers, setHiddenTrackers] = useState<Set<string>>(new Set());
   const [hideAllTrackers, setHideAllTrackers] = useState(false);
   const [trackerOrder, setTrackerOrder] = useState<string[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [setDragOverId] = useState<string | null>(null);
 
   const processPacket = useCallback((packet: TelemetryPacket) => {
+    setTrackerColors((prev) => {
+      if (prev[packet.nodeId]) return prev;
+      const nextIdx = Object.keys(prev).length;
+      return { ...prev, [packet.nodeId]: colorForIndex(nextIdx) };
+    });
     setPackets((prev) => [packet, ...prev].slice(0, 500));
     setTrackers((prev) => {
       const next = { ...prev } as Record<string, Tracker>;
@@ -288,7 +292,7 @@ function App() {
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap contributors" />
               <ZoomToLatest trackers={trackersMemo} />
               {Object.values(trackers).map((t) => {
-                const color = colorForId(t.nodeId);
+                const color = trackerColors[t.nodeId] ?? colorForIndex(0);
                 const latlons = t.points.map((point) => [point.lat, point.lon] as [number, number]);
                 const latest = t.latest;
                 const isHidden = hiddenTrackers.has(t.nodeId) || hideAllTrackers;
@@ -388,7 +392,7 @@ function App() {
                  .filter(Boolean)
                  .map((t) => {
                    const latest = t!.latest;
-                   const color = colorForId(t!.nodeId);
+                   const color = trackerColors[t!.nodeId] ?? colorForIndex(0);
                    const isHidden = hiddenTrackers.has(t.nodeId) || hideAllTrackers;
                     return (
                      <div key={t.nodeId}>
