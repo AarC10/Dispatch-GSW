@@ -1,14 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
-import {
-  CircleMarker,
-  MapContainer,
-  Polyline,
-  Popup,
-  TileLayer,
-  useMap,
-} from "react-leaflet";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {listen, UnlistenFn} from "@tauri-apps/api/event";
+import {invoke} from "@tauri-apps/api/core";
+import {CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap,} from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
 
@@ -56,7 +49,7 @@ function colorForId(id: string) {
     "#999999",
   ];
   let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.codePointAt(i)) >>> 0;
   return palette[h % palette.length];
 }
 
@@ -75,7 +68,7 @@ function ZoomToLatest({ trackers }: { trackers: Record<string, Tracker> }) {
   useEffect(() => {
     const all = Object.values(trackers)
       .map((tracker) => tracker.latest)
-      .filter((packet): packet is TelemetryPacket => Boolean(packet && packet.lat !== undefined && packet.lon !== undefined));
+      .filter((packet): packet is TelemetryPacket => Boolean(packet?.lat !== undefined && packet.lon !== undefined));
     if (all.length === 0) return;
     const latest = all.reduce((a, b) => (a.ts > b.ts ? a : b));
     map.setView([latest.lat!, latest.lon!], Math.max(map.getZoom(), 5));
@@ -215,15 +208,15 @@ function App() {
   }
 
   useEffect(() => {
-    refreshPorts();
+    refreshPorts().then(r => r);
   }, []);
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
     (async () => {
       try {
-        const l = await listen<any>("serial-packet", (event) => {
-          const pktRaw = event.payload as any;
+        unlisten = await listen<any>("serial-packet", (event) => {
+          const pktRaw = event.payload;
           if (!pktRaw) return;
           const pkt: TelemetryPacket = {
             nodeId: String(pktRaw.node_id ?? "unknown"),
@@ -234,11 +227,10 @@ function App() {
             fixStatus: fixFromString(pktRaw.fix_status),
             sats: pktRaw.satellites_count ?? undefined,
             ts: pktRaw.timestamp_ms ?? Date.now(),
-            raw: (pktRaw.raw_lines && pktRaw.raw_lines.join("\n")) || undefined,
+            raw: (pktRaw.raw_lines?.join("\n")) || undefined,
           };
           processPacket(pkt);
         });
-        unlisten = l;
       } catch (e) {
         console.warn("Could not attach serial listener", e);
       }
@@ -252,7 +244,7 @@ function App() {
     return () => stopDemo();
   }, [stopDemo]);
 
-  const trackersMemo = useMemo(() => trackers, [JSON.stringify(trackers)]);
+  const trackersMemo = useMemo(() => trackers, [trackers]);
   const statusText = connected
     ? selectedPort === DEMO_PORT
       ? "Connected to URRG Demo"
@@ -299,14 +291,14 @@ function App() {
             </div>
 
 
-            {!connected ? (
-              <button onClick={connect} disabled={!selectedPort} className="primary">
-                Connect
-              </button>
+            {connected ? (
+                <button onClick={disconnect} className="ghost">
+                  Disconnect
+                </button>
             ) : (
-              <button onClick={disconnect} className="ghost">
-                Disconnect
-              </button>
+                <button onClick={connect} disabled={!selectedPort} className="primary">
+                  Connect
+                </button>
             )}
           </div>
         </div>
@@ -378,8 +370,8 @@ function App() {
                    {packets.map((packet) => (
                      <tr key={`${packet.ts}-${packet.nodeId}`}>
                        <td>{packet.nodeId}</td>
-                       <td>{packet.lat !== undefined ? packet.lat.toFixed(6) : "—"}</td>
-                       <td>{packet.lon !== undefined ? packet.lon.toFixed(6) : "—"}</td>
+                       <td>{packet.lat === undefined ? "—" : packet.lat.toFixed(6)}</td>
+                       <td>{packet.lon === undefined ? "—" : packet.lon.toFixed(6)}</td>
                        <td>{packet.rssi ?? "—"}</td>
                        <td>{packet.snr ?? "—"}</td>
                        <td>{packet.fixStatus ?? "?"}</td>
@@ -447,8 +439,8 @@ function App() {
                          <div className="bubble-row">
                            <span>Latitude/Longitude</span>
                            <span>
-                             {latest.lat !== undefined ? latest.lat.toFixed(6) : "—"},{" "}
-                             {latest.lon !== undefined ? latest.lon.toFixed(6) : "—"}
+                             {latest.lat === undefined ? "—" : latest.lat.toFixed(6)},{" "}
+                             {latest.lon === undefined ? "—" : latest.lon.toFixed(6)}
                            </span>
                          </div>
                          <div className="bubble-row">
