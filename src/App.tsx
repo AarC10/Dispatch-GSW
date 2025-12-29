@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState, type DragEvent} from "react";
 import {listen, UnlistenFn} from "@tauri-apps/api/event";
 import {invoke} from "@tauri-apps/api/core";
 import {CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap,} from "react-leaflet";
@@ -35,6 +35,8 @@ const DEMO_TRACKER_CONFIGS = [
   { nodeId: "OMEN", offset: Math.PI, radius: 0.0006 },
   { nodeId: "KONG", offset: (3 * Math.PI) / 2, radius: 0.00085 },
 ] as const;
+const DEMO_SCHEDULE = ["RISK", "OTIS", "OMEN", "KONG", "VOID"] as const;
+const DEMO_SLOT_MS = 1000;
 
 function colorForId(id: string) {
   const palette = [
@@ -95,9 +97,12 @@ function App() {
   const [packets, setPackets] = useState<TelemetryPacket[]>([]);
   const [hiddenTrackers, setHiddenTrackers] = useState<Set<string>>(new Set());
   const [hideAllTrackers, setHideAllTrackers] = useState(false);
+  const [trackerOrder, setTrackerOrder] = useState<string[]>([]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const demoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const demoPhaseRef = useRef(0);
+  const demoSlotRef = useRef(0);
 
   const processPacket = useCallback((packet: TelemetryPacket) => {
     setPackets((prev) => [packet, ...prev].slice(0, 500));
@@ -111,6 +116,7 @@ function App() {
       next[packet.nodeId] = tracker;
       return next;
     });
+    setTrackerOrder((prev) => (prev.includes(packet.nodeId) ? prev : [...prev, packet.nodeId]));
   }, []);
 
   const stopDemo = useCallback(() => {
@@ -123,36 +129,44 @@ function App() {
   const emitDemoPackets = useCallback(() => {
     const now = Date.now();
     const phase = demoPhaseRef.current;
-    DEMO_TRACKER_CONFIGS.forEach((cfg, idx) => {
-      const angle = phase + cfg.offset;
-      const radius = cfg.radius + Math.sin(phase + idx * 0.7) * 0.00015;
+    const slotIdx = demoSlotRef.current % DEMO_SCHEDULE.length;
+    const nodeId = DEMO_SCHEDULE[slotIdx];
+    const config = DEMO_TRACKER_CONFIGS.find((c) => c.nodeId === nodeId);
+
+    if (config) {
+      const angle = phase + config.offset;
+      const radius = config.radius + Math.sin(phase + slotIdx * 0.7) * 0.00015;
       const baseRssi = randomInt(-80, -40);
       const baseSnr = randomInt(-5, 20);
 
       processPacket({
-        nodeId: cfg.nodeId,
+        nodeId: config.nodeId,
         lat: DEMO_BASE_LAT + radius * Math.cos(angle),
         lon: DEMO_BAS_LON + radius * Math.sin(angle),
         fixStatus: "FIX",
-        sats: 8 + idx,
+        sats: 8 + slotIdx,
         rssi: baseRssi + randomInt(-20, 20),
         snr: baseSnr + randomInt(-5, 5),
         ts: now,
       });
-    });
-    processPacket({
-      nodeId: "VOID",
-      fixStatus: "NOFIX",
-      ts: now,
-    });
+    } else if (nodeId === "VOID") {
+      processPacket({
+        nodeId: "VOID",
+        fixStatus: "NOFIX",
+        ts: now,
+      });
+    }
+
+    demoSlotRef.current = (slotIdx + 1) % DEMO_SCHEDULE.length;
     demoPhaseRef.current = (phase + Math.PI / 24) % (Math.PI * 2);
   }, [processPacket]);
 
   const startDemo = useCallback(() => {
     stopDemo();
     demoPhaseRef.current = 0;
+    demoSlotRef.current = 0;
     emitDemoPackets();
-    demoTimerRef.current = setInterval(emitDemoPackets, 1200);
+    demoTimerRef.current = setInterval(emitDemoPackets, DEMO_SLOT_MS);
   }, [emitDemoPackets, stopDemo]);
 
   async function refreshPorts() {
@@ -180,6 +194,33 @@ function App() {
   function toggleHideAll() {
     setHideAllTrackers((v) => !v);
   }
+
+  const handleDragStart = useCallback((e: DragEvent<HTMLDivElement>, id: string) => {
+    setDraggingId(id);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id);
+  }, []);
+  const handleDragEnd = useCallback(() => setDraggingId(null), []);
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }, []);
+  const handleDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>, targetId: string) => {
+      e.preventDefault();
+      const activeId = draggingId ?? e.dataTransfer.getData("text/plain");
+      if (!activeId || activeId === targetId) return;
+      setTrackerOrder((prev) => {
+        const next = prev.filter((id) => id !== activeId);
+        const targetIdx = next.indexOf(targetId);
+        if (targetIdx === -1) next.push(activeId);
+        else next.splice(targetIdx, 0, activeId);
+        return next;
+      });
+      setDraggingId(null);
+    },
+    [draggingId]
+  );
 
   async function connect() {
     if (!selectedPort) return;
@@ -408,20 +449,29 @@ function App() {
               </div>
             </div>
              <div className="bubble-list">
-               {Object.values(trackers)
-                 .sort((a, b) => (b.latest?.ts ?? 0) - (a.latest?.ts ?? 0))
+               {trackerOrder
+                 .map((id) => trackers[id])
+                 .filter(Boolean)
                  .map((t) => {
-                   const latest = t.latest;
-                   const color = colorForId(t.nodeId);
-                   const isHidden = hiddenTrackers.has(t.nodeId) || hideAllTrackers;
+                   const latest = t!.latest;
+                   const color = colorForId(t!.nodeId);
+                   const isHidden = hiddenTrackers.has(t!.nodeId) || hideAllTrackers;
                     return (
-                     <div className={`bubble ${isHidden ? 'muted' : ''}`} key={t.nodeId}>
-                       <div className="bubble-header" style={{ borderLeft: `6px solid ${color}` }}>
-                         <div className="bubble-title">{t.nodeId}</div>
-                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                           <div className="bubble-time">{latest ? new Date(latest.ts).toLocaleTimeString() : "—"}</div>
-                           <button className="icon-small" title={isHidden ? 'Unhide tracker' : 'Hide tracker'} onClick={() => toggleTrackerHidden(t.nodeId)}>
-                             {isHidden ? (
+                     <div
+                       className={`bubble ${isHidden ? 'muted' : ''}`}
+                       key={t!.nodeId}
+                       draggable
+                       onDragStart={(e) => handleDragStart(e, t!.nodeId)}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={handleDragOver}
+                       onDrop={(e) => handleDrop(e, t!.nodeId)}
+                     >
+                        <div className="bubble-header" style={{ borderLeft: `6px solid ${color}` }}>
+                          <div className="bubble-title">{t.nodeId}</div>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <div className="bubble-time">{latest ? new Date(latest.ts).toLocaleTimeString() : "—"}</div>
+                            <button className="icon-small" title={isHidden ? 'Unhide tracker' : 'Hide tracker'} onClick={() => toggleTrackerHidden(t.nodeId)}>
+                              {isHidden ? (
                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
                                  <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -432,38 +482,38 @@ function App() {
                                  <path d="M1 1l22 22" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
                                </svg>
                              )}
-                           </button>
-                         </div>
-                       </div>
+                            </button>
+                          </div>
+                        </div>
 
                      {latest ? (
                        <div className="bubble-body">
                          <div className="bubble-row">
                            <span>Latitude/Longitude</span>
                            <span>
-                             {latest.lat === undefined ? "—" : latest.lat.toFixed(6)},{" "}
-                             {latest.lon === undefined ? "—" : latest.lon.toFixed(6)}
-                           </span>
-                         </div>
-                         <div className="bubble-row">
-                           <span>RSSI / SNR</span>
-                           <span>
-                             {latest.rssi ?? "—"} dBm / {latest.snr ?? "—"} dB
-                           </span>
-                         </div>
-                         <div className="bubble-row">
-                           <span>Fix Status / Satellites in View</span>
-                           <span>
-                             {latest.fixStatus ?? "?"} / {latest.sats ?? "—"}
-                           </span>
-                         </div>
-                       </div>
-                     ) : (
-                       <div className="bubble-body">No data</div>
-                     )}
-                   </div>
-                 );
-               })}
+                             {latest.lat === undefined ? "—" : latest.lat.toFixed(6)},
+                              {latest.lon === undefined ? "—" : latest.lon.toFixed(6)}
+                            </span>
+                          </div>
+                          <div className="bubble-row">
+                            <span>RSSI / SNR</span>
+                            <span>
+                              {latest.rssi ?? "—"} dBm / {latest.snr ?? "—"} dB
+                            </span>
+                          </div>
+                          <div className="bubble-row">
+                            <span>Fix Status / Satellites in View</span>
+                            <span>
+                              {latest.fixStatus ?? "?"} / {latest.sats ?? "—"}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bubble-body">No data</div>
+                      )}
+                    </div>
+                  );
+                })}
             </div>
           </div>
         </aside>
