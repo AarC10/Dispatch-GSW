@@ -69,6 +69,8 @@ function ZoomToLatest({ trackers }: { trackers: Record<string, Tracker> }) {
 }
 
 function App() {
+  const [activeTab, setActiveTab] = useState<"tracking" | "config">("tracking");
+
   const [ports, setPorts] = useState<string[]>([]);
   const [selectedPort, setSelectedPort] = useState("");
   const [baud, setBaud] = useState(9600);
@@ -260,7 +262,20 @@ function App() {
       <header className="toolbar">
         <div className="toolbar-left">
           <h2>Dispatch</h2>
-          <div className="status">{statusText}</div>
+          <nav className="tabs-inline">
+            <button
+              className={`tab ${activeTab === "tracking" ? "active" : ""}`}
+              onClick={() => setActiveTab("tracking")}
+            >
+              Tracking
+            </button>
+            <button
+              className={`tab ${activeTab === "config" ? "active" : ""}`}
+              onClick={() => setActiveTab("config")}
+            >
+              Config
+            </button>
+          </nav>
         </div>
         <div className="toolbar-right">
           <div className="controls-row">
@@ -308,6 +323,8 @@ function App() {
         </div>
       </header>
 
+
+      {activeTab === "tracking" && (
       <section className="content">
         <div className="left-column">
           <div className="card map-card">
@@ -496,6 +513,21 @@ function App() {
           </div>
         </aside>
       </section>
+      )}
+
+      {activeTab === "config" && (
+      <section className="content">
+        <div className="config-content">
+          <div className="card">
+            <div className="card-header">
+              <span>Configuration</span>
+            </div>
+            <div style={{ padding: "20px" }}>
+            </div>
+          </div>
+        </div>
+      </section>
+      )}
     </main>
   );
 }
