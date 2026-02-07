@@ -1,0 +1,317 @@
+import { useCallback, useMemo, useState, type DragEvent } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
+import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { useEffect } from "react";
+import type { Tracker, TelemetryPacket } from "./types";
+import { colorForIndex } from "./utils";
+import "leaflet/dist/leaflet.css";
+
+function ZoomToLatest({ trackers }: { trackers: Record<string, Tracker> }) {
+  const map = useMap();
+  useEffect(() => {
+    const all = Object.values(trackers)
+      .map((tracker) => tracker.latest)
+      .filter((packet): packet is TelemetryPacket => Boolean(packet?.lat !== undefined && packet.lon !== undefined));
+    if (all.length === 0) return;
+    const latest = all.reduce((a, b) => (a.ts > b.ts ? a : b));
+    map.setView([latest.lat!, latest.lon!], Math.max(map.getZoom(), 15));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(Object.keys(trackers).map((k) => trackers[k].latest?.ts))]);
+  return null;
+}
+
+interface TrackingTabProps {
+  trackers: Record<string, Tracker>;
+  packets: TelemetryPacket[];
+  trackerColors: Record<string, string>;
+  onClearPackets: () => void;
+}
+
+export function TrackingTab({ trackers, packets, trackerColors, onClearPackets }: TrackingTabProps) {
+  const [hiddenTrackers, setHiddenTrackers] = useState<Set<string>>(new Set());
+  const [hideAllTrackers, setHideAllTrackers] = useState(false);
+  const [trackerOrder, setTrackerOrder] = useState<string[]>([]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  // Update tracker order when new trackers appear
+  useEffect(() => {
+    const trackerIds = Object.keys(trackers);
+    setTrackerOrder((prev) => {
+      const newIds = trackerIds.filter((id) => !prev.includes(id));
+      return [...prev, ...newIds];
+    });
+  }, [trackers]);
+
+  const handleDragStart = useCallback((e: DragEvent<HTMLDivElement>, id: string) => {
+    setDraggingId(id);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggingId(null);
+  }, []);
+
+  const handleDragOver = useCallback(
+    (e: DragEvent<HTMLDivElement>, targetId: string) => {
+      if (!draggingId || draggingId === targetId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setTrackerOrder((prev) => {
+        const dragIndex = prev.indexOf(draggingId);
+        const targetIndex = prev.indexOf(targetId);
+        if (dragIndex === -1 || targetIndex === -1) return prev;
+        const without = prev.filter((id) => id !== draggingId);
+        const targetIdxInWithout = without.indexOf(targetId);
+        const insertIdx = dragIndex < targetIndex ? targetIdxInWithout + 1 : targetIdxInWithout;
+        const next = [...without];
+        next.splice(insertIdx, 0, draggingId);
+        return next.join("|") === prev.join("|") ? prev : next;
+      });
+    },
+    [draggingId]
+  );
+
+  const handleDragLeave = useCallback(() => {}, []);
+
+  const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDraggingId(null);
+  }, []);
+
+  function savePacketsCsv() {
+    if (packets.length === 0) return;
+    const payload = packets.map((packet) => ({
+      node_id: packet.nodeId,
+      lat: packet.lat,
+      lon: packet.lon,
+      rssi: packet.rssi,
+      snr: packet.snr,
+      fix_status: packet.fixStatus,
+      sats: packet.sats,
+      ts: packet.ts,
+    }));
+    const defaultName = `packets-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+    save({ defaultPath: defaultName, filters: [{ name: "CSV", extensions: ["csv"] }] })
+      .then((path) => {
+        if (!path) throw new Error("Save canceled");
+        return invoke<string>("export_packets_csv", { packets: payload, path });
+      })
+      .then((path) => {
+        console.log("Saved packets CSV to", path);
+      })
+      .catch((err) => {
+        console.error("Failed to save CSV", err);
+      });
+  }
+
+  function toggleTrackerHidden(nodeId: string) {
+    setHiddenTrackers((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
+  }
+
+  function toggleHideAll() {
+    setHideAllTrackers((v) => !v);
+  }
+
+  const trackersMemo = useMemo(() => trackers, [trackers]);
+
+  return (
+    <section className="content">
+      <div className="left-column">
+        <div className="card map-card">
+          <MapContainer center={[0, 0]} zoom={2} style={{ height: "100%", width: "100%" }}>
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap contributors" />
+            <ZoomToLatest trackers={trackersMemo} />
+            {Object.values(trackers).map((t) => {
+              const color = trackerColors[t.nodeId] ?? colorForIndex(0);
+              const latlons = t.points.map((point) => [point.lat, point.lon] as [number, number]);
+              const latest = t.latest;
+              const isHidden = hiddenTrackers.has(t.nodeId) || hideAllTrackers;
+              return (
+                <div key={t.nodeId}>
+                  {!isHidden && latlons.length > 1 && <Polyline positions={latlons} color={color} weight={3} />}
+                  {!isHidden && latest && latest.lat !== undefined && latest.lon !== undefined && (
+                    <CircleMarker center={[latest.lat, latest.lon]} pathOptions={{ color: color, fillColor: color }} radius={8}>
+                      <Popup>
+                        <div className="popup">
+                          <strong>{t.nodeId}</strong>
+                          <div>
+                            {latest.lat.toFixed(6)}, {latest.lon.toFixed(6)}
+                          </div>
+                          <div>
+                            RSSI: {latest.rssi ?? "—"} SNR: {latest.snr ?? "—"}
+                          </div>
+                          <div>
+                            Fix: {latest.fixStatus ?? "?"} Sats: {latest.sats ?? "—"}
+                          </div>
+                        </div>
+                      </Popup>
+                    </CircleMarker>
+                  )}
+                </div>
+              );
+            })}
+          </MapContainer>
+        </div>
+
+        <div className="card table-card">
+          <div className="card-header">
+            <span>Latest packets</span>
+            <div className="header-actions">
+              <button className="icon-button button-success" title="Save packets to CSV" onClick={savePacketsCsv}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: 6 }}>
+                  <path d="M5 5h11l3 3v11H5V5Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M9 5v4h6V5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M9 17h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Save
+              </button>
+              <button className="icon-button button-danger" title="Clear latest packets" onClick={onClearPackets}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: 6 }}>
+                  <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M10 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Node</th>
+                  <th>Latitude</th>
+                  <th>Longitude</th>
+                  <th>RSSI (dBm)</th>
+                  <th>SNR (dB)</th>
+                  <th>Fix</th>
+                  <th>Satellites in View</th>
+                </tr>
+              </thead>
+              <tbody>
+                {packets.map((packet) => (
+                  <tr key={`${packet.ts}-${packet.nodeId}`}>
+                    <td>{new Date(packet.ts).toLocaleTimeString()}</td>
+                    <td>{packet.nodeId}</td>
+                    <td>{packet.lat === undefined ? "—" : packet.lat.toFixed(6)}</td>
+                    <td>{packet.lon === undefined ? "—" : packet.lon.toFixed(6)}</td>
+                    <td>{packet.rssi ?? "—"}</td>
+                    <td>{packet.snr ?? "—"}</td>
+                    <td>{packet.fixStatus ?? "?"}</td>
+                    <td>{packet.sats ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <aside className="right-column">
+        <div className="card bubbles-card">
+          <div className="card-header">
+            <span>Trackers</span>
+            <div className="header-actions">
+              <button className="icon-button" title={hideAllTrackers ? "Show trackers" : "Hide trackers"} onClick={toggleHideAll}>
+                {hideAllTrackers ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.57 21.57 0 0 1 5.06-6.06" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M1 1l22 22" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+          <div className="bubble-list">
+            {trackerOrder
+              .map((id) => trackers[id])
+              .filter(Boolean)
+              .map((t) => {
+                const latest = t!.latest;
+                const color = trackerColors[t!.nodeId] ?? colorForIndex(0);
+                const isHidden = hiddenTrackers.has(t.nodeId) || hideAllTrackers;
+                return (
+                  <div key={t.nodeId}>
+                    <div
+                      className={`bubble ${isHidden ? "muted" : ""} ${draggingId === t.nodeId ? "dragging" : ""}`}
+                      onDragOver={(e) => handleDragOver(e, t.nodeId)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                    >
+                      <div
+                        className="bubble-handle"
+                        draggable
+                        title="Drag to reorder"
+                        onDragStart={(e) => handleDragStart(e, t.nodeId)}
+                        onDragEnd={handleDragEnd}
+                      />
+                      <div className="bubble-content">
+                        <div className="bubble-header" style={{ borderLeft: `6px solid ${color}` }}>
+                          <div className="bubble-title">{t.nodeId}</div>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <div className="bubble-time">{latest ? new Date(latest.ts).toLocaleTimeString() : "—"}</div>
+                            <button className="icon-small" title={isHidden ? "Unhide tracker" : "Hide tracker"} onClick={() => toggleTrackerHidden(t.nodeId)}>
+                              {isHidden ? (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                                  <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.57 21.57 0 0 1 5.06-6.06" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                                  <path d="M1 1l22 22" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {latest ? (
+                          <div className="bubble-body">
+                            <div className="bubble-row">
+                              <span>Latitude/Longitude</span>
+                              <span>
+                                {latest.lat === undefined ? "—" : latest.lat.toFixed(6)}, {latest.lon === undefined ? "—" : latest.lon.toFixed(6)}
+                              </span>
+                            </div>
+                            <div className="bubble-row">
+                              <span>RSSI / SNR</span>
+                              <span>
+                                {latest.rssi ?? "—"} dBm / {latest.snr ?? "—"} dB
+                              </span>
+                            </div>
+                            <div className="bubble-row">
+                              <span>Fix Status / Satellites in View</span>
+                              <span>
+                                {latest.fixStatus ?? "?"} / {latest.sats ?? "—"}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bubble-body">No data</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      </aside>
+    </section>
+  );
+}
