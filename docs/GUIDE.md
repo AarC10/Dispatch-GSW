@@ -51,13 +51,9 @@ If the connection fails, a **"Failed to connect"** notice appears next to the Po
 
 The Tracking tab is the default view. It shows the live map, tracker status cards, and a scrolling packet log.
 
-<!-- TODO: Screenshot full Tracking tab with map, trackers panel, and packet log -->
-
 ### Map
 
 The map displays each tracker's current position as a colored circle marker, and draws a polyline trail of its recent path (up to 200 points).
-
-<!-- TODO: Screenshot map with two tracker markers and trails -->
 
 - **Zooming and panning** work with standard mouse controls (scroll to zoom, click-drag to pan).
 - The map automatically pans and zooms to the most recently updated tracker when new position data arrives.
@@ -66,8 +62,6 @@ The map displays each tracker's current position as a colored circle marker, and
   - Latitude / Longitude
   - RSSI and SNR
   - Fix status and satellite count
-
-<!-- TODO: Screenshot marker popup -->
 
 ### Trackers Panel
 
@@ -128,7 +122,7 @@ Rows with missing data show `—` in place of unavailable fields.
 
 The Config tab lets you read and write configuration values on a connected device over the serial link.
 
-<!-- TODO: Screenshot Config tab with fields and log panel -->
+<img src="images/ConfigTab.png">
 
 > The Config tab requires an active connection. If no device is connected, the fields are disabled and a prompt is shown.
 
@@ -137,8 +131,6 @@ The Config tab lets you read and write configuration values on a connected devic
 ### Probing
 
 When you connect, Dispatch automatically sends a `config` command to the device and listens for 2 seconds to discover which fields the firmware supports. This is called **probing**.
-
-<!-- TODO: Screenshot Config tab while probing, showing "Probing…" button state -->
 
 - Fields the device does **not** support are shown as disabled with a **Not available** badge.
 - To re-probe manually, click the **Probe** button in the card header.
@@ -162,7 +154,7 @@ Dispatch sends each changed field as a `config <key> <value>` command over seria
 
 > **Note:** Settings are saved to device flash and take effect after the device reboots.
 
-<!-- TODO: Screenshot Config tab after sending, with log showing sent commands and responses -->
+<img src="images/ConfigLog.png">
 
 ### Log
 
@@ -177,6 +169,8 @@ The log panel on the right of the Config tab records all serial activity during 
 
 Click **Clear** in the log header to wipe the log.
 
+> **Note:** If you get a communication error, try re-sending the configuration. If it persists, double-check your connection and that the device is responsive.
+
 ---
 
 ## 4. Demo Mode
@@ -188,7 +182,7 @@ Dispatch includes a built-in simulation for testing without hardware.
 
 The simulation generates four moving tracker nodes (`RISK`, `OTIS`, `OMEN`, `KONG`) near a fixed base location, plus a fifth node (`VOID`) that reports no GPS fix. All tracker and packet features work normally in demo mode.
 
-<!-- TODO: Screenshot Tracking tab running the demo simulation with four tracker trails on the map -->
+<img src="images/URRGDemo.png">
 
 Click **Disconnect** to stop the simulation.
 
