@@ -15,6 +15,7 @@ function App() {
   const [selectedPort, setSelectedPort] = useState("");
   const [baud, setBaud] = useState(9600);
   const [connected, setConnected] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   const [trackers, setTrackers] = useState<Record<string, Tracker>>({});
   const [packets, setPackets] = useState<TelemetryPacket[]>([]);
@@ -63,6 +64,7 @@ function App() {
 
   async function connect() {
     if (!selectedPort) return;
+    setConnectError(null);
     if (selectedPort === DEMO_PORT) {
       startDemo();
       setConnected(true);
@@ -74,6 +76,7 @@ function App() {
     } catch (e) {
       console.error("open_port failed", e);
       setConnected(false);
+      setConnectError(String(e));
     }
   }
 
@@ -153,9 +156,15 @@ function App() {
         </div>
         <div className="toolbar-right">
           <div className="controls-row">
+            <div className="port-field-wrap">
+              {connectError && (
+                <span className="connect-error" title={connectError}>
+                  Failed to connect
+                </span>
+              )}
             <div className="field-inline">
               <label>Port</label>
-              <select value={selectedPort} onChange={(e) => setSelectedPort(e.target.value)}>
+              <select value={selectedPort} onChange={(e) => { setSelectedPort(e.target.value); setConnectError(null); }}>
                 <option value="">Select</option>
                 <option value={DEMO_PORT}>URRG Demo Simulation</option>
                 {ports.map((p) => (
@@ -170,6 +179,7 @@ function App() {
                   <path d="M21 3v6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </button>
+            </div>
             </div>
 
             <div className="field-inline">

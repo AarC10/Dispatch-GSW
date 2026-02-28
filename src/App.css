@@ -250,6 +250,25 @@ button:hover {
   filter: brightness(1.1);
 }
 
+.port-field-wrap {
+  position: relative;
+}
+
+.connect-error {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #f87171;
+  white-space: nowrap;
+  cursor: default;
+  border: 1px solid #7f1d1d;
+  background: #1c0a0a;
+  border-radius: 5px;
+  padding: 3px 8px;
+}
+
 section.content {
   display: grid;
   grid-template-columns: 2fr 1fr;
