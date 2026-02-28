@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
@@ -20,13 +20,19 @@ function App() {
   const [packets, setPackets] = useState<TelemetryPacket[]>([]);
   const [trackerColors, setTrackerColors] = useState<Record<string, string>>({});
 
+  const clearGenRef = useRef(0);
+
   const processPacket = useCallback((packet: TelemetryPacket) => {
+    const gen = clearGenRef.current;
     setTrackerColors((prev) => {
       if (prev[packet.nodeId]) return prev;
       const nextIdx = Object.keys(prev).length;
       return { ...prev, [packet.nodeId]: colorForIndex(nextIdx) };
     });
-    setPackets((prev) => [packet, ...prev].slice(0, 500));
+    setPackets((prev) => {
+      if (clearGenRef.current !== gen) return prev;
+      return [packet, ...prev].slice(0, 500);
+    });
     setTrackers((prev) => {
       const next = { ...prev } as Record<string, Tracker>;
       const tracker = next[packet.nodeId] ?? { nodeId: packet.nodeId, points: [] };
@@ -42,6 +48,7 @@ function App() {
   const { startDemo, stopDemo } = useDemoSimulation(processPacket);
 
   function clearPackets() {
+    clearGenRef.current += 1;
     setPackets([]);
   }
 
