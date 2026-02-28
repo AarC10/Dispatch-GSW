@@ -206,7 +206,7 @@ function App() {
         />
       )}
 
-      {activeTab === "config" && <ConfigTab />}
+      {activeTab === "config" && <ConfigTab connected={connected} />}
     </main>
   );
 }

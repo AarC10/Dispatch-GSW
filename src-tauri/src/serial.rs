@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::Emitter;
@@ -12,6 +12,7 @@ use serde_json::json;
 struct SerialState {
     stop_flag: Option<Arc<AtomicBool>>,
     handle: Option<thread::JoinHandle<()>>,
+    writer: Option<Box<dyn serialport::SerialPort>>,
 }
 
 static GLOBAL_STATE: OnceLock<Mutex<SerialState>> = OnceLock::new();
@@ -21,6 +22,7 @@ fn get_state() -> &'static Mutex<SerialState> {
         Mutex::new(SerialState {
             stop_flag: None,
             handle: None,
+            writer: None,
         })
     })
 }
@@ -51,6 +53,8 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
         Ok(p) => p,
         Err(e) => return Err(format!("Failed to open port: {}", e)),
     };
+
+    let writer = port.try_clone().map_err(|e| format!("Failed to clone port for writing: {}", e))?;
 
     let stop = Arc::new(AtomicBool::new(false));
     let stop_cloned = stop.clone();
@@ -154,6 +158,7 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
 
     state.stop_flag = Some(stop);
     state.handle = Some(handle);
+    state.writer = Some(writer);
 
     Ok("ok".into())
 }
@@ -162,6 +167,7 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
 pub fn close_port() -> Result<String, String> {
     let state_mutex = get_state();
     let mut state = state_mutex.lock().map_err(|e| format!("state lock error: {}", e))?;
+    state.writer = None;
     if let Some(stop) = state.stop_flag.take() {
         stop.store(true, Ordering::Relaxed);
     }
@@ -169,4 +175,14 @@ pub fn close_port() -> Result<String, String> {
         let _ = handle.join();
     }
     Ok("closed".into())
+}
+
+#[tauri::command]
+pub fn write_serial(data: String) -> Result<(), String> {
+    let state_mutex = get_state();
+    let mut state = state_mutex.lock().map_err(|e| format!("state lock error: {}", e))?;
+    let writer = state.writer.as_mut().ok_or("Port not open")?;
+    let line = format!("{}\n", data);
+    writer.write_all(line.as_bytes()).map_err(|e| format!("Write error: {}", e))?;
+    Ok(())
 }
