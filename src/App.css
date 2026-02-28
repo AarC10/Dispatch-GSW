@@ -433,17 +433,25 @@ right-column {
   font-size: 13px;
 }
 
-.config-content {
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
-  width: 100%;
+.config-layout {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  grid-template-rows: 1fr;
+  gap: 12px;
+  padding: 12px;
+  height: calc(100vh - 64px);
+  align-items: start;
 }
 
 .config-card {
-  max-width: 560px;
+  min-width: 0;
+}
+
+.config-log-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
 }
 
 .config-info {
@@ -511,14 +519,51 @@ right-column {
   min-width: 0;
 }
 
-.config-status {
-  font-size: 12px;
-  color: #94a3b8;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 200px;
+.config-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #1f2937;
 }
+
+.config-actions-note {
+  font-size: 11px;
+  color: #64748b;
+}
+
+
+.config-log {
+  font-family: monospace;
+  font-size: 12px;
+  padding: 8px 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.config-log-empty {
+  display: block;
+  padding: 6px 16px;
+  color: #374151;
+  font-style: italic;
+}
+
+.config-log-entry {
+  display: flex;
+  gap: 10px;
+  padding: 2px 16px;
+  line-height: 1.5;
+}
+
+.config-log-time {
+  color: #374151;
+  flex-shrink: 0;
+}
+
+.config-log-sent .config-log-text  { color: #60a5fa; }
+.config-log-recv .config-log-text  { color: #34d399; }
+.config-log-error .config-log-text { color: #f87171; }
+.config-log-info .config-log-text  { color: #94a3b8; }
 
 @media (max-width: 960px) {
   section.content {
