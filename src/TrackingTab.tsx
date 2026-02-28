@@ -201,7 +201,7 @@ export function TrackingTab({ trackers, packets, trackerColors, onClearPackets }
                 {packets.map((packet) => (
                   <tr key={`${packet.ts}-${packet.nodeId}`}>
                     <td>{new Date(packet.ts).toLocaleTimeString()}</td>
-                    <td>{packet.nodeId}</td>
+                    <td>{packet.nodeId.startsWith("Node ") ? packet.nodeId.slice(5) : packet.nodeId}</td>
                     <td>{packet.lat === undefined ? "—" : packet.lat.toFixed(6)}</td>
                     <td>{packet.lon === undefined ? "—" : packet.lon.toFixed(6)}</td>
                     <td>{packet.rssi ?? "—"}</td>

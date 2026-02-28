@@ -100,9 +100,16 @@ function App() {
         unlisten = await listen<any>("serial-packet", (event) => {
           const pktRaw = event.payload;
           if (!pktRaw) return;
+          const callsign: string | undefined = pktRaw.callsign ?? undefined;
+          const rawNodeId = pktRaw.node_id;
+          const nodeId = callsign
+            ? `${callsign}-${rawNodeId}`
+            : rawNodeId !== undefined
+              ? `Node ${rawNodeId}`
+              : "unknown";
           const pkt: TelemetryPacket = {
-            nodeId: String(pktRaw.node_id ?? "unknown"),
-            callsign: pktRaw.callsign ?? undefined,
+            nodeId,
+            callsign,
             lat: pktRaw.latitude ?? undefined,
             lon: pktRaw.longitude ?? undefined,
             rssi: pktRaw.receiver_rssi ?? undefined,
