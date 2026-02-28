@@ -20,17 +20,16 @@ function App() {
   const [packets, setPackets] = useState<TelemetryPacket[]>([]);
   const [trackerColors, setTrackerColors] = useState<Record<string, string>>({});
 
-  const clearGenRef = useRef(0);
+  const clearedAtRef = useRef(0);
 
   const processPacket = useCallback((packet: TelemetryPacket) => {
-    const gen = clearGenRef.current;
     setTrackerColors((prev) => {
       if (prev[packet.nodeId]) return prev;
       const nextIdx = Object.keys(prev).length;
       return { ...prev, [packet.nodeId]: colorForIndex(nextIdx) };
     });
     setPackets((prev) => {
-      if (clearGenRef.current !== gen) return prev;
+      if (packet.ts < clearedAtRef.current) return prev;
       return [packet, ...prev].slice(0, 500);
     });
     setTrackers((prev) => {
@@ -48,7 +47,7 @@ function App() {
   const { startDemo, stopDemo } = useDemoSimulation(processPacket);
 
   function clearPackets() {
-    clearGenRef.current += 1;
+    clearedAtRef.current = Date.now();
     setPackets([]);
   }
 
