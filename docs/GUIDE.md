@@ -25,7 +25,8 @@ Dispatch is a ground station application for all Wild West Rocketry products. It
 
 The connection controls are in the toolbar at the top of the window.
 
-<!-- TODO: Screenshot toolbar showing Port selector, Baud field, and Connect button -->
+[//]: # (<img src="images/PortBaudConnect.png" alt="Port and baud rate controls">)
+
 
 | Control | Description                                                                   |
 |---|-------------------------------------------------------------------------------|
@@ -50,13 +51,13 @@ If the connection fails, a **"Failed to connect"** notice appears next to the Po
 
 The Tracking tab is the default view. It shows the live map, tracker status cards, and a scrolling packet log.
 
-<!-- TODO: Screenshot full Tracking tab with map, trackers panel, and packet log -->
+[//]: # (<!-- TODO: Screenshot full Tracking tab with map, trackers panel, and packet log -->)
 
 ### Map
 
 The map displays each tracker's current position as a colored circle marker, and draws a polyline trail of its recent path (up to 200 points).
 
-<!-- TODO: Screenshot map with two tracker markers and trails -->
+[//]: # (<!-- TODO: Screenshot map with two tracker markers and trails -->)
 
 - **Zooming and panning** work with standard mouse controls (scroll to zoom, click-drag to pan).
 - The map automatically pans and zooms to the most recently updated tracker when new position data arrives.
@@ -72,7 +73,7 @@ The map displays each tracker's current position as a colored circle marker, and
 
 The right-hand panel lists every tracker seen since the current session started.
 
-<!-- TODO: Screenshot trackers panel with several tracker cards -->
+[//]: # (<img src="images/TrackerList.png">)
 
 Each card shows:
 
@@ -104,15 +105,13 @@ Each card shows:
 
 Drag the handle on the left edge of a tracker card to reorder the list.
 
-<!-- TODO: Screenshot dragging a tracker card to reorder -->
-
 ---
 
 ### Packet Log
 
 The lower portion of the left column shows a table of the most recent packets received (up to 500 entries, newest first).
 
-<!-- TODO: Screenshot packet log table -->
+[//]: # (<img src="images/LatestPackets.png">)
 
 Columns: **Time**, **Node**, **Latitude**, **Longitude**, **RSSI (dBm)**, **SNR (dB)**, **Fix**, **Satellites in View**.
 
