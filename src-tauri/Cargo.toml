@@ -1,6 +1,6 @@
 [package]
 name = "dispatch-gsw"
-version = "1.0.1"
+version = "1.1.0"
 description = "Ground Software for Wild West Rocketry Products"
 authors = ["Aaron Chan"]
 edition = "2021"
