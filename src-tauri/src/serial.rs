@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::Emitter;
 
-use crate::deputy_interpreter::{parse_zephyr_line};
+use crate::deputy_interpreter::{parse_zephyr_line, RE_HEADER_NODE, RE_HEADER_LICENSED_NOFIX};
 use crate::telemetry::{DataPacket, FixStatus};
 use serde_json::json;
 
@@ -84,6 +84,9 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
             if src.receiver_snr.is_some() {
                 dst.receiver_snr = src.receiver_snr;
             }
+            if src.callsign.is_some() {
+                dst.callsign = src.callsign;
+            }
             if !matches!(src.fix_status, FixStatus::Unknown) {
                 dst.fix_status = src.fix_status;
             }
@@ -102,8 +105,11 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
                     // Emit raw line for debug
                     let _ = app.emit("serial-line", line.clone());
 
-                    let is_packet_start = line.to_lowercase().contains("packet received");
-                    let is_fix_line = line.to_lowercase().contains("fix status") || line.to_lowercase().contains("no fix");
+                    let is_packet_start = RE_HEADER_NODE.is_match(&line)
+                        || RE_HEADER_LICENSED_NOFIX.is_match(&line);
+                    let line_lower = line.to_lowercase();
+                    let is_packet_end = line_lower.contains("fix status:")
+                        || line_lower.contains("no fix acquired");
 
                     if is_packet_start {
                         if let Some(prev) = current.take() {
@@ -119,7 +125,7 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
                                 current = Some(pkt_part);
                             }
 
-                            if is_fix_line {
+                            if is_packet_end {
                                 if let Some(done) = current.take() {
                                     emit_packet(done);
                                 }

@@ -2,6 +2,7 @@ export type FixStatus = "NOFIX" | "FIX" | "DIFF" | "EST" | "UNKNOWN";
 
 export type TelemetryPacket = {
   nodeId: string;
+  callsign?: string;
   lat?: number;
   lon?: number;
   rssi?: number;

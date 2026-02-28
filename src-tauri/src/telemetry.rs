@@ -24,6 +24,7 @@ pub struct DataPacket {
     pub fix_status: FixStatus,
     pub receiver_rssi: Option<i16>,
     pub receiver_snr: Option<i8>,
+    pub callsign: Option<String>,
     pub timestamp_ms: i64,
     pub raw_lines: Vec<String>,
 }
