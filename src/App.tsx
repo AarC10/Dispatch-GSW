@@ -96,6 +96,7 @@ function App() {
           if (!pktRaw) return;
           const pkt: TelemetryPacket = {
             nodeId: String(pktRaw.node_id ?? "unknown"),
+            callsign: pktRaw.callsign ?? undefined,
             lat: pktRaw.latitude ?? undefined,
             lon: pktRaw.longitude ?? undefined,
             rssi: pktRaw.receiver_rssi ?? undefined,

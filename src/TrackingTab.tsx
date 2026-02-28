@@ -282,6 +282,12 @@ export function TrackingTab({ trackers, packets, trackerColors, onClearPackets }
 
                         {latest ? (
                           <div className="bubble-body">
+                            {latest.callsign && (
+                              <div className="bubble-row">
+                                <span>Callsign</span>
+                                <span>{latest.callsign}</span>
+                              </div>
+                            )}
                             <div className="bubble-row">
                               <span>Latitude/Longitude</span>
                               <span>

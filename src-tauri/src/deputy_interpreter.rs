@@ -8,6 +8,29 @@ pub enum ParseError {
     NoMatch,
 }
 
+lazy_static! {
+    // Probably shouldnt all unwrap but fiwb
+
+    // Packet header - unlicensed or licensed fix packet
+    // Matches: "Node 1: (13 bytes | -80 dBm | 7 dB):"
+    pub static ref RE_HEADER_NODE: Regex = Regex::new(
+        r"(?i)node\s+(\d+):\s*\(\d+\s*bytes\s*\|\s*(-?\d+)\s*dBm\s*\|\s*(-?\d+)\s*dB"
+    ).unwrap();
+
+    // Packet header - licensed no-fix packet
+    // Matches: "KD2YIE-1: (13 bytes | -80 dBm | 7 dB):"
+    pub static ref RE_HEADER_LICENSED_NOFIX: Regex = Regex::new(
+        r"^([A-Z0-9/\-]{3,12})-(\d+):\s*\(\d+\s*bytes\s*\|\s*(-?\d+)\s*dBm\s*\|\s*(-?\d+)\s*dB"
+    ).unwrap();
+
+    pub static ref RE_LAT: Regex = Regex::new(r"(?i)latitude:\s*(-?\d+\.\d+)").unwrap();
+    pub static ref RE_LON: Regex = Regex::new(r"(?i)longitude:\s*(-?\d+\.\d+)").unwrap();
+    pub static ref RE_SATS: Regex = Regex::new(r"(?i)satellites count:\s*(\d+)").unwrap();
+    pub static ref RE_FIX: Regex = Regex::new(r"(?i)fix status:\s*(\S+(?:\s+\S+)?)").unwrap();
+    pub static ref RE_NOFIX: Regex = Regex::new(r"(?i)no fix acquired").unwrap();
+    pub static ref RE_CALLSIGN: Regex = Regex::new(r"(?i)callsign:\s*([A-Z0-9/\-]{3,12})").unwrap();
+}
+
 fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -16,59 +39,48 @@ fn now_ms() -> i64 {
 }
 
 pub fn parse_zephyr_line(line: &str) -> Result<DataPacket, ParseError> {
-    lazy_static! {
-        static ref RE_NODE: Regex = Regex::new(r"(?i)node\s*[:=]?\s*(\d+)").unwrap();
-        static ref RE_LAT: Regex = Regex::new(r"(?i)lat(?:itude)?[:=]?\s*(-?\d+\.\d+)").unwrap();
-        static ref RE_LON: Regex = Regex::new(r"(?i)lon(?:gitude)?[:=]?\s*(-?\d+\.\d+)").unwrap();
-        static ref RE_RSSI: Regex = Regex::new(r"(?i)rssi[:=]?\s*(-?\d+)").unwrap();
-        static ref RE_SNR: Regex = Regex::new(r"(?i)snr[:=]?\s*(-?\d+)").unwrap();
-        static ref RE_RSSI_SNR: Regex = Regex::new(r"(?i)\(\s*\d+\s*bytes\s*\|\s*(-?\d+)\s*dBm\s*\|\s*(-?\d+)\s*dB").unwrap();
-        static ref RE_SATS: Regex = Regex::new(r"(?i)sats?(?:ellites)?[:=]?\s*(\d+)").unwrap();
-        static ref RE_FIX: Regex = Regex::new(r"(?i)fix\s*status[:=]?\s*([A-Z]+)").unwrap();
-        static ref RE_NOFIX: Regex = Regex::new(r"(?i)no\s*fix").unwrap();
-    }
-
     let mut pkt = DataPacket {
         timestamp_ms: now_ms(),
         raw_lines: vec![line.to_string()],
         ..Default::default()
     };
 
-    if let Some(cap) = RE_NODE.captures(line) {
+    if let Some(cap) = RE_HEADER_NODE.captures(line) {
         pkt.node_id = cap.get(1).and_then(|m| m.as_str().parse::<u8>().ok());
+        pkt.receiver_rssi = cap.get(2).and_then(|m| m.as_str().parse::<i16>().ok());
+        pkt.receiver_snr = cap.get(3).and_then(|m| m.as_str().parse::<i8>().ok());
+    } else if let Some(cap) = RE_HEADER_LICENSED_NOFIX.captures(line) {
+        pkt.callsign = cap.get(1).map(|m| m.as_str().to_string());
+        pkt.node_id = cap.get(2).and_then(|m| m.as_str().parse::<u8>().ok());
+        pkt.receiver_rssi = cap.get(3).and_then(|m| m.as_str().parse::<i16>().ok());
+        pkt.receiver_snr = cap.get(4).and_then(|m| m.as_str().parse::<i8>().ok());
     }
+
     if let Some(cap) = RE_LAT.captures(line) {
         pkt.latitude = cap.get(1).and_then(|m| m.as_str().parse::<f32>().ok());
     }
     if let Some(cap) = RE_LON.captures(line) {
         pkt.longitude = cap.get(1).and_then(|m| m.as_str().parse::<f32>().ok());
     }
-
-    if let Some(cap) = RE_RSSI_SNR.captures(line) {
-        pkt.receiver_rssi = cap.get(1).and_then(|m| m.as_str().parse::<i16>().ok());
-        pkt.receiver_snr = cap.get(2).and_then(|m| m.as_str().parse::<i8>().ok());
-    } else {
-        // Fallback if no combined match
-        if let Some(cap) = RE_RSSI.captures(line) {
-            pkt.receiver_rssi = cap.get(1).and_then(|m| m.as_str().parse::<i16>().ok());
-        }
-        if let Some(cap) = RE_SNR.captures(line) {
-            pkt.receiver_snr = cap.get(1).and_then(|m| m.as_str().parse::<i8>().ok());
-        }
-    }
-
     if let Some(cap) = RE_SATS.captures(line) {
         pkt.satellites_count = cap.get(1).and_then(|m| m.as_str().parse::<u8>().ok());
     }
+    if let Some(cap) = RE_CALLSIGN.captures(line) {
+        pkt.callsign = cap.get(1).map(|m| m.as_str().to_string());
+    }
 
-    // explicit status token first, else "NO FIX" substring
     if let Some(cap) = RE_FIX.captures(line) {
-        pkt.fix_status = match cap.get(1).map(|m| m.as_str().to_uppercase()) {
-            Some(s) if s.contains("NO") => FixStatus::NoFix,
-            Some(s) if s.contains("DIFF") => FixStatus::Diff,
-            Some(s) if s.contains("EST") => FixStatus::Est,
-            Some(s) if s.contains("FIX") => FixStatus::Fix,
-            _ => FixStatus::Unknown,
+        let val = cap.get(1).map(|m| m.as_str().to_uppercase()).unwrap_or_default();
+        pkt.fix_status = if val.contains("NO") {
+            FixStatus::NoFix
+        } else if val.contains("DIFF") {
+            FixStatus::Diff
+        } else if val.contains("EST") {
+            FixStatus::Est
+        } else if val.contains("FIX") {
+            FixStatus::Fix
+        } else {
+            FixStatus::Unknown
         };
     } else if RE_NOFIX.is_match(line) {
         pkt.fix_status = FixStatus::NoFix;
@@ -80,6 +92,7 @@ pub fn parse_zephyr_line(line: &str) -> Result<DataPacket, ParseError> {
         || pkt.receiver_rssi.is_some()
         || pkt.receiver_snr.is_some()
         || pkt.satellites_count.is_some()
+        || pkt.callsign.is_some()
         || !matches!(pkt.fix_status, FixStatus::Unknown);
 
     if meaningful {
