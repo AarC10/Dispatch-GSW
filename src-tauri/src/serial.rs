@@ -2,12 +2,18 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::BTreeSet;
 
 use tauri::Emitter;
 
 use crate::deputy_interpreter::{parse_zephyr_line, RE_HEADER_NODE, RE_HEADER_LICENSED_NOFIX};
 use crate::telemetry::{DataPacket, FixStatus};
 use serde_json::json;
+
+#[cfg(windows)]
+use winreg::enums::HKEY_LOCAL_MACHINE;
+#[cfg(windows)]
+use winreg::RegKey;
 
 struct SerialState {
     stop_flag: Option<Arc<AtomicBool>>,
@@ -27,16 +33,64 @@ fn get_state() -> &'static Mutex<SerialState> {
     })
 }
 
+#[cfg(windows)]
+fn windows_registry_ports() -> Vec<String> {
+    // Fallback source for cases where available_ports misses some COM devices.
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let key = match hklm.open_subkey("HARDWARE\\DEVICEMAP\\SERIALCOMM") {
+        Ok(key) => key,
+        Err(_) => return Vec::new(),
+    };
+
+    key.enum_values()
+        .filter_map(Result::ok)
+        .filter_map(|(_, value)| value.to_utf8().ok())
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn windows_registry_ports() -> Vec<String> {
+    Vec::new()
+}
+
+fn normalize_open_port_name(port_name: &str) -> String {
+    #[cfg(windows)]
+    {
+        let upper = port_name.to_ascii_uppercase();
+        if let Some(num_str) = upper.strip_prefix("COM") {
+            if let Ok(num) = num_str.parse::<u32>() {
+                if num >= 10 && !port_name.starts_with(r"\\.\") {
+                    return format!(r"\\.\{}", port_name);
+                }
+            }
+        }
+    }
+
+    port_name.to_string()
+}
+
 #[tauri::command]
 pub fn list_serial_ports() -> Result<Vec<String>, String> {
+    let mut deduped = BTreeSet::new();
+
     match serialport::available_ports() {
         Ok(ports) => {
-            println!("Found {} serial ports.", ports.len());
-            let names = ports.into_iter().map(|p| p.port_name).collect();
-            Ok(names)
+            for port in ports {
+                deduped.insert(port.port_name);
+            }
         }
-        Err(e) => Err(format!("Failed to list serial ports: {}", e)),
+        Err(e) => {
+            eprintln!("serialport::available_ports failed: {e}");
+        }
     }
+
+    for port in windows_registry_ports() {
+        deduped.insert(port);
+    }
+
+    let names: Vec<String> = deduped.into_iter().collect();
+    println!("Found {} serial ports.", names.len());
+    Ok(names)
 }
 
 #[tauri::command]
@@ -49,7 +103,8 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
 
     // Attempt opening port with a short timeout so reads can be interruptible
     let timeout = std::time::Duration::from_millis(500);
-    let port = match serialport::new(port_name.as_str(), baud_rate).timeout(timeout).open() {
+    let normalized_port_name = normalize_open_port_name(&port_name);
+    let port = match serialport::new(normalized_port_name.as_str(), baud_rate).timeout(timeout).open() {
         Ok(p) => p,
         Err(e) => return Err(format!("Failed to open port: {}", e)),
     };
