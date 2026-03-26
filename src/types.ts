@@ -18,3 +18,9 @@ export type Tracker = {
   points: { lat: number; lon: number; ts: number }[];
   latest?: TelemetryPacket;
 };
+
+export type SerialPortOption = {
+  portName: string;
+  label: string;
+};
+

@@ -3,7 +3,7 @@ import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 import { DEMO_PORT, useDemoSimulation } from "./demoSimulation";
-import type { Tracker, TelemetryPacket } from "./types";
+import type { SerialPortOption, Tracker, TelemetryPacket } from "./types";
 import { colorForIndex, fixFromString } from "./utils";
 import { TrackingTab } from "./TrackingTab";
 import { ConfigTab } from "./ConfigTab";
@@ -11,7 +11,7 @@ import { ConfigTab } from "./ConfigTab";
 function App() {
   const [activeTab, setActiveTab] = useState<"tracking" | "config">("tracking");
 
-  const [ports, setPorts] = useState<string[]>([]);
+  const [portOptions, setPortOptions] = useState<SerialPortOption[]>([]);
   const [selectedPort, setSelectedPort] = useState("");
   const [baud, setBaud] = useState(9600);
   const [connected, setConnected] = useState(false);
@@ -55,10 +55,17 @@ function App() {
 
   async function refreshPorts() {
     try {
-      const list = await invoke<string[]>("list_serial_ports");
-      setPorts(list);
+      const options = await invoke<SerialPortOption[]>("list_serial_port_options");
+      setPortOptions(options);
     } catch (e) {
-      console.error(e);
+      console.warn("list_serial_port_options failed, falling back to list_serial_ports", e);
+      try {
+        const names = await invoke<string[]>("list_serial_ports");
+        setPortOptions(names.map((portName) => ({ portName, label: portName })));
+      } catch (fallbackError) {
+        console.error(fallbackError);
+        setPortOptions([]);
+      }
     }
   }
 
@@ -167,9 +174,9 @@ function App() {
               <select value={selectedPort} onChange={(e) => { setSelectedPort(e.target.value); setConnectError(null); }}>
                 <option value="">Select</option>
                 <option value={DEMO_PORT}>URRG Demo Simulation</option>
-                {ports.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
+                {portOptions.map((port) => (
+                  <option key={port.portName} value={port.portName}>
+                    {port.label}
                   </option>
                 ))}
               </select>

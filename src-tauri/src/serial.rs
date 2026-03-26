@@ -2,13 +2,14 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use tauri::Emitter;
 
 use crate::deputy_interpreter::{parse_zephyr_line, RE_HEADER_NODE, RE_HEADER_LICENSED_NOFIX};
 use crate::telemetry::{DataPacket, FixStatus};
 use serde_json::json;
+use serde::Serialize;
 
 #[cfg(windows)]
 use winreg::enums::HKEY_LOCAL_MACHINE;
@@ -19,6 +20,13 @@ struct SerialState {
     stop_flag: Option<Arc<AtomicBool>>,
     handle: Option<thread::JoinHandle<()>>,
     writer: Option<Box<dyn serialport::SerialPort>>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SerialPortOption {
+    pub port_name: String,
+    pub label: String,
 }
 
 static GLOBAL_STATE: OnceLock<Mutex<SerialState>> = OnceLock::new();
@@ -69,14 +77,49 @@ fn normalize_open_port_name(port_name: &str) -> String {
     port_name.to_string()
 }
 
-#[tauri::command]
-pub fn list_serial_ports() -> Result<Vec<String>, String> {
-    let mut deduped = BTreeSet::new();
+fn normalized_text(value: Option<String>) -> Option<String> {
+    value.and_then(|s| {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn format_port_label(port_name: &str, port_type: &serialport::SerialPortType) -> String {
+    match port_type {
+        serialport::SerialPortType::UsbPort(usb) => {
+            let product = normalized_text(usb.product.clone());
+            let manufacturer = normalized_text(usb.manufacturer.clone());
+            match (manufacturer, product) {
+                (Some(m), Some(p)) => format!("{} {} ({})", m, p, port_name),
+                (None, Some(p)) => format!("{} ({})", p, port_name),
+                (Some(m), None) => format!("{} USB Serial ({})", m, port_name),
+                (None, None) => format!("USB Serial ({})", port_name),
+            }
+        }
+        serialport::SerialPortType::BluetoothPort => format!("Bluetooth ({})", port_name),
+        serialport::SerialPortType::PciPort => format!("PCI Serial ({})", port_name),
+        serialport::SerialPortType::Unknown => port_name.to_string(),
+    }
+}
+
+fn collect_serial_port_options() -> Vec<SerialPortOption> {
+    let mut by_port: BTreeMap<String, SerialPortOption> = BTreeMap::new();
 
     match serialport::available_ports() {
         Ok(ports) => {
             for port in ports {
-                deduped.insert(port.port_name);
+                let label = format_port_label(&port.port_name, &port.port_type);
+                by_port.insert(
+                    port.port_name.clone(),
+                    SerialPortOption {
+                        port_name: port.port_name,
+                        label,
+                    },
+                );
             }
         }
         Err(e) => {
@@ -84,8 +127,30 @@ pub fn list_serial_ports() -> Result<Vec<String>, String> {
         }
     }
 
-    for port in windows_registry_ports() {
-        deduped.insert(port);
+    for port_name in windows_registry_ports() {
+        by_port
+            .entry(port_name.clone())
+            .or_insert_with(|| SerialPortOption {
+                port_name: port_name.clone(),
+                label: port_name,
+            });
+    }
+
+    by_port.into_values().collect()
+}
+
+#[tauri::command]
+pub fn list_serial_port_options() -> Result<Vec<SerialPortOption>, String> {
+    let options = collect_serial_port_options();
+    println!("Found {} serial ports.", options.len());
+    Ok(options)
+}
+
+#[tauri::command]
+pub fn list_serial_ports() -> Result<Vec<String>, String> {
+    let mut deduped = BTreeSet::new();
+    for option in collect_serial_port_options() {
+        deduped.insert(option.port_name);
     }
 
     let names: Vec<String> = deduped.into_iter().collect();
