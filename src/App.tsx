@@ -111,12 +111,10 @@ function App() {
           const pktRaw = event.payload;
           if (!pktRaw) return;
           const callsign: string | undefined = pktRaw.callsign ?? undefined;
-          const rawNodeId = pktRaw.node_id;
-          const nodeId = callsign
-            ? `${callsign}-${rawNodeId}`
-            : rawNodeId !== undefined
-              ? `Node ${rawNodeId}`
-              : "unknown";
+          const rawNodeId: number | null = pktRaw.node_id ?? null;
+          const nodeId = rawNodeId !== null
+            ? callsign ? `${callsign}-${rawNodeId}` : `Node ${rawNodeId}`
+            : callsign ?? "unknown";
           const pkt: TelemetryPacket = {
             nodeId,
             callsign,

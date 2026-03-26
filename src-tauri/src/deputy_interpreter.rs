@@ -18,9 +18,9 @@ lazy_static! {
     ).unwrap();
 
     // Packet header - licensed no-fix packet
-    // Matches: "KD2YIE-1: (13 bytes | -80 dBm | 7 dB):"
+    // Matches: "KD2YIE-1: (13 bytes | -80 dBm | 7 dB):" and "KD2YIE: (...)"
     pub static ref RE_HEADER_LICENSED_NOFIX: Regex = Regex::new(
-        r"^([A-Z0-9/\-]{3,12})-(\d+):\s*\(\d+\s*bytes\s*\|\s*(-?\d+)\s*dBm\s*\|\s*(-?\d+)\s*dB"
+        r"(?i)^([A-Z0-9/\-]{3,12})(?:-(\d+))?:\s*\(\d+\s*bytes\s*\|\s*(-?\d+)\s*dBm\s*\|\s*(-?\d+)\s*dB"
     ).unwrap();
 
     pub static ref RE_LAT: Regex = Regex::new(r"(?i)latitude:\s*(-?\d+\.\d+)").unwrap();
