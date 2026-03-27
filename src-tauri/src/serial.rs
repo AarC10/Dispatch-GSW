@@ -52,7 +52,29 @@ fn windows_registry_ports() -> Vec<String> {
 
     key.enum_values()
         .filter_map(Result::ok)
-        .filter_map(|(_, value)| value.to_utf8().ok())
+        .filter_map(|(_, value)| {
+            // Convert bytes to UTF-16 string
+            if value.bytes.len() % 2 != 0 {
+                return None;
+            }
+            let mut utf16_bytes = Vec::new();
+            for chunk in value.bytes.chunks(2) {
+                if chunk.len() == 2 {
+                    utf16_bytes.push(u16::from_le_bytes([chunk[0], chunk[1]]));
+                }
+            }
+            String::from_utf16(&utf16_bytes)
+                .ok()
+                .and_then(|s| {
+                    // Remove null terminators
+                    let trimmed = s.trim_end_matches('\0');
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_string())
+                    }
+                })
+        })
         .collect()
 }
 
