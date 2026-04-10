@@ -139,11 +139,13 @@ When you connect, Dispatch automatically sends a `config` command to the device 
 
 | Field | Range / Format     | Notes |
 |---|--------------------|---|
-| **Frequency (MHz)** | 902 – 928 MHz      | Up to 6 decimal places, e.g. `903.123456` |
+| **Frequency (MHz)** | 410 – 450 MHz or 902 – 928 MHz | Up to 6 decimal places, e.g. `433.920000` or `903.123456` |
 | **Node ID** | 0 – 9              | Integer identifier for the tracker node |
 | **Callsign** | Up to 6 characters | Uppercase only. Licensed amateur radio operators only. |
 
-Fields are only editable if the connected device reports support for them.
+Dispatch renders these known fields with validation when the device reports support for them.
+
+If firmware exposes additional device-specific settings, Dispatch will also render those automatically as generic text fields. This is used for newer hardware such as Hunter receivers.
 
 ### Sending Configuration
 

@@ -7,12 +7,53 @@ interface ConfigTabProps {
 }
 
 type AvailableConfigs = {
-  freq: boolean;
-  node_id: boolean;
-  callsign: boolean;
+  [key: string]: boolean;
 };
 
-const NONE_AVAILABLE: AvailableConfigs = { freq: false, node_id: false, callsign: false };
+const NONE_AVAILABLE: AvailableConfigs = {};
+
+type FieldSpec = {
+  label: string;
+  hint: string;
+  inputType: "number" | "text";
+  step?: number;
+  min?: number;
+  max?: number;
+  maxLength?: number;
+  placeholder?: string;
+  transform?: (value: string) => string;
+};
+
+const KNOWN_FIELDS: Record<string, FieldSpec> = {
+  freq: {
+    label: "Frequency (MHz)",
+    hint: "410 - 450 or 902 - 928 MHz",
+    inputType: "number",
+    step: 0.000001,
+    min: 410,
+    max: 928,
+    placeholder: "e.g. 433.920000 or 903.123456",
+  },
+  node_id: {
+    label: "Node ID",
+    hint: "0 - 9",
+    inputType: "number",
+    step: 1,
+    min: 0,
+    max: 9,
+    placeholder: "0 - 9",
+  },
+  callsign: {
+    label: "Callsign",
+    hint: "Licensed operators only",
+    inputType: "text",
+    maxLength: 12,
+    placeholder: "e.g. KD2YIE",
+    transform: (value) => value.toUpperCase(),
+  },
+};
+
+const IGNORED_CONFIG_KEYS = new Set(["config", "subcommands", "uart"]);
 
 type LogKind = "sent" | "recv" | "error" | "info";
 type LogEntry = { id: number; time: string; text: string; kind: LogKind };
@@ -23,15 +64,71 @@ function stripAnsi(str: string): string {
   return str.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 }
 
+function humanizeKey(key: string): string {
+  return key
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getFieldSpec(key: string): FieldSpec {
+  return (
+    KNOWN_FIELDS[key] ?? {
+      label: humanizeKey(key),
+      hint: `Device-specific setting: ${key}`,
+      inputType: "text",
+      placeholder: `Value for ${key}`,
+    }
+  );
+}
+
+function extractConfigKeys(text: string): string[] {
+  const keys = new Set<string>();
+
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim().toLowerCase();
+    if (!line) continue;
+
+    const patterns = [
+      /^([a-z][a-z0-9_]*)$/,
+      /^([a-z][a-z0-9_]*)\s*[:=-]/,
+      /^config\s+([a-z][a-z0-9_]*)\b/,
+      /^[*-]\s*([a-z][a-z0-9_]*)\b/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = line.match(pattern);
+      if (match?.[1]) {
+        const key = match[1];
+        if (!IGNORED_CONFIG_KEYS.has(key)) {
+          keys.add(key);
+        }
+      }
+    }
+  }
+
+  for (const key of Object.keys(KNOWN_FIELDS)) {
+    if (!IGNORED_CONFIG_KEYS.has(key) && text.toLowerCase().includes(key)) {
+      keys.add(key);
+    }
+  }
+
+  return Array.from(keys).sort((a, b) => {
+    const aKnown = Number(!(a in KNOWN_FIELDS));
+    const bKnown = Number(!(b in KNOWN_FIELDS));
+    if (aKnown !== bKnown) return aKnown - bKnown;
+    return a.localeCompare(b);
+  });
+}
+
 export function ConfigTab({ connected }: ConfigTabProps) {
   const [probing, setProbing] = useState(false);
   const [probed, setProbed] = useState(false);
   const [available, setAvailable] = useState<AvailableConfigs>(NONE_AVAILABLE);
+  const [availableKeys, setAvailableKeys] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
-
-  const [freqValue, setFreqValue] = useState("");
-  const [nodeIdValue, setNodeIdValue] = useState("");
-  const [callsignValue, setCallsignValue] = useState("");
+  const [configValues, setConfigValues] = useState<Record<string, string>>({});
 
   const [log, setLog] = useState<LogEntry[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
@@ -54,6 +151,7 @@ export function ConfigTab({ connected }: ConfigTabProps) {
     setProbing(true);
     setProbed(false);
     setAvailable(NONE_AVAILABLE);
+    setAvailableKeys([]);
     addLog("info", "Probing device for available configurations…");
 
     const accumulated: string[] = [];
@@ -70,18 +168,22 @@ export function ConfigTab({ connected }: ConfigTabProps) {
         if (abortRef.current) return;
 
         const text = accumulated.join("\n");
-        const found: AvailableConfigs = {
-          freq: text.includes("freq"),
-          node_id: text.includes("node_id"),
-          callsign: text.includes("callsign"),
-        };
+        const keys = extractConfigKeys(text);
+        const found = Object.fromEntries(keys.map((key) => [key, true]));
         setAvailable(found);
+        setAvailableKeys(keys);
         setProbing(false);
         setProbed(true);
+        setConfigValues((prev) => {
+          const next: Record<string, string> = {};
+          for (const key of keys) {
+            next[key] = prev[key] ?? "";
+          }
+          return next;
+        });
 
-        const names = (Object.keys(found) as (keyof AvailableConfigs)[]).filter((k) => found[k]);
-        if (names.length > 0) {
-          addLog("recv", `Available: ${names.join(", ")}`);
+        if (keys.length > 0) {
+          addLog("recv", `Available: ${keys.join(", ")}`);
         } else {
           addLog("info", "No configurable fields reported by device.");
         }
@@ -95,6 +197,7 @@ export function ConfigTab({ connected }: ConfigTabProps) {
       setProbing(false);
       setProbed(false);
       setAvailable(NONE_AVAILABLE);
+      setAvailableKeys([]);
       return;
     }
     probe();
@@ -102,11 +205,9 @@ export function ConfigTab({ connected }: ConfigTabProps) {
   }, [connected]);
 
   async function sendAll() {
-    const fields = [
-      { key: "freq", value: freqValue, enabled: available.freq },
-      { key: "node_id", value: nodeIdValue, enabled: available.node_id },
-      { key: "callsign", value: callsignValue, enabled: available.callsign },
-    ].filter((f) => f.enabled && f.value !== "");
+    const fields = availableKeys
+      .map((key) => ({ key, value: configValues[key] ?? "", enabled: available[key] }))
+      .filter((f) => f.enabled && f.value !== "");
 
     if (fields.length === 0) return;
     setSending(true);
@@ -139,9 +240,7 @@ export function ConfigTab({ connected }: ConfigTabProps) {
 
   const canSend =
     !sending &&
-    ((available.freq && freqValue !== "") ||
-      (available.node_id && nodeIdValue !== "") ||
-      (available.callsign && callsignValue !== ""));
+    availableKeys.some((key) => available[key] && (configValues[key] ?? "") !== "");
 
   return (
     <section className="content config-layout">
@@ -162,42 +261,32 @@ export function ConfigTab({ connected }: ConfigTabProps) {
         {!connected && <p className="config-info">Connect to a device to configure settings.</p>}
 
         <div className="config-fields">
-          <ConfigField label="Frequency (MHz)" hint="902 – 928 MHz" enabled={available.freq} probed={probed}>
-            <input
-              type="number"
-              step="0.000001"
-              min={902}
-              max={928}
-              value={freqValue}
-              onChange={(e) => setFreqValue(e.target.value)}
-              disabled={!available.freq}
-              placeholder={available.freq ? "e.g. 903.123456" : "—"}
-            />
-          </ConfigField>
+          {probed && availableKeys.length === 0 && <p className="config-info">No configurable fields were detected for this device.</p>}
 
-          <ConfigField label="Node ID" hint="0 – 9" enabled={available.node_id} probed={probed}>
-            <input
-              type="number"
-              min={0}
-              max={9}
-              step={1}
-              value={nodeIdValue}
-              onChange={(e) => setNodeIdValue(e.target.value)}
-              disabled={!available.node_id}
-              placeholder={available.node_id ? "0 – 9" : "—"}
-            />
-          </ConfigField>
-
-          <ConfigField label="Callsign" hint="Licensed operators only" enabled={available.callsign} probed={probed}>
-            <input
-              type="text"
-              maxLength={12}
-              value={callsignValue}
-              onChange={(e) => setCallsignValue(e.target.value.toUpperCase())}
-              disabled={!available.callsign}
-              placeholder={available.callsign ? "e.g. KD2YIE" : "—"}
-            />
-          </ConfigField>
+          {availableKeys.map((key) => {
+            const spec = getFieldSpec(key);
+            const enabled = !!available[key];
+            return (
+              <ConfigField key={key} label={spec.label} hint={spec.hint} enabled={enabled} probed={probed}>
+                <input
+                  type={spec.inputType}
+                  step={spec.step}
+                  min={spec.min}
+                  max={spec.max}
+                  maxLength={spec.maxLength}
+                  value={configValues[key] ?? ""}
+                  onChange={(e) =>
+                    setConfigValues((prev) => ({
+                      ...prev,
+                      [key]: spec.transform ? spec.transform(e.target.value) : e.target.value,
+                    }))
+                  }
+                  disabled={!enabled}
+                  placeholder={enabled ? spec.placeholder ?? "" : "—"}
+                />
+              </ConfigField>
+            );
+          })}
         </div>
 
         <div className="config-actions">

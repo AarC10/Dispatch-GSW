@@ -133,16 +133,21 @@ export function TrackingTab({ trackers, packets, trackerColors, onClearPackets }
               const latlons = t.points.map((point) => [point.lat, point.lon] as [number, number]);
               const latest = t.latest;
               const isHidden = hiddenTrackers.has(t.nodeId) || hideAllTrackers;
+              const lastKnownPoint = t.points.length > 0 ? t.points[t.points.length - 1] : null;
+              const markerPos =
+                latest?.lat !== undefined && latest?.lon !== undefined
+                  ? { lat: latest.lat, lon: latest.lon }
+                  : lastKnownPoint;
               return (
                 <div key={t.nodeId}>
                   {!isHidden && latlons.length > 1 && <Polyline positions={latlons} color={color} weight={3} />}
-                  {!isHidden && latest && latest.lat !== undefined && latest.lon !== undefined && (
-                    <CircleMarker center={[latest.lat, latest.lon]} pathOptions={{ color: color, fillColor: color }} radius={8}>
+                  {!isHidden && latest && markerPos && (
+                    <CircleMarker center={[markerPos.lat, markerPos.lon]} pathOptions={{ color: color, fillColor: color }} radius={8}>
                       <Popup>
                         <div className="popup">
                           <strong>{t.nodeId}</strong>
                           <div>
-                            {latest.lat.toFixed(6)}, {latest.lon.toFixed(6)}
+                            {markerPos.lat.toFixed(6)}, {markerPos.lon.toFixed(6)}
                           </div>
                           <div>
                             RSSI: {latest.rssi ?? "—"} SNR: {latest.snr ?? "—"}
