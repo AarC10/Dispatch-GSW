@@ -6,20 +6,29 @@ interface ConfigTabProps {
   connected: boolean;
 }
 
+type DeviceType = "tracker" | "marshal";
+
 type AvailableConfigs = {
   [key: string]: boolean;
 };
 
 const NONE_AVAILABLE: AvailableConfigs = {};
 
+type SelectOption = {
+  label: string;
+  value: string;
+};
+
 type FieldSpec = {
   label: string;
   hint: string;
-  inputType: "number" | "text";
+  deviceType?: DeviceType;
+  inputType: "number" | "text" | "select";
   step?: number;
   min?: number;
   max?: number;
   maxLength?: number;
+  options?: SelectOption[];
   placeholder?: string;
   transform?: (value: string) => string;
 };
@@ -28,6 +37,7 @@ const KNOWN_FIELDS: Record<string, FieldSpec> = {
   freq: {
     label: "Frequency (MHz)",
     hint: "410 - 450 or 902 - 928 MHz",
+    deviceType: "tracker",
     inputType: "number",
     step: 0.000001,
     min: 410,
@@ -37,6 +47,7 @@ const KNOWN_FIELDS: Record<string, FieldSpec> = {
   node_id: {
     label: "Node ID",
     hint: "0 - 9",
+    deviceType: "tracker",
     inputType: "number",
     step: 1,
     min: 0,
@@ -46,14 +57,67 @@ const KNOWN_FIELDS: Record<string, FieldSpec> = {
   callsign: {
     label: "Callsign",
     hint: "Licensed operators only",
+    deviceType: "tracker",
     inputType: "text",
     maxLength: 12,
     placeholder: "e.g. KD2YIE",
     transform: (value) => value.toUpperCase(),
   },
+  mode: {
+    label: "Deploy Mode",
+    hint: "dual_deploy | drogue_only | main_only",
+    deviceType: "marshal",
+    inputType: "select",
+    options: [
+      { label: "Dual Deploy", value: "dual_deploy" },
+      { label: "Drogue Only", value: "drogue_only" },
+      { label: "Main Only", value: "main_only" },
+    ],
+  },
+  main_alt: {
+    label: "Main Deploy Altitude (ft)",
+    hint: "0 - 30000 ft AGL",
+    deviceType: "marshal",
+    inputType: "number",
+    min: 0,
+    max: 30000,
+    step: 1,
+    placeholder: "e.g. 500",
+  },
+  arm_alt: {
+    label: "Arming Altitude (ft)",
+    hint: "0 - 3000 ft AGL",
+    deviceType: "marshal",
+    inputType: "number",
+    min: 0,
+    max: 3000,
+    step: 1,
+    placeholder: "e.g. 100",
+  },
+  apogee_delay: {
+    label: "Apogee Delay (ms)",
+    hint: "0 - 30000 ms",
+    deviceType: "marshal",
+    inputType: "number",
+    min: 0,
+    max: 30000,
+    step: 1,
+    placeholder: "e.g. 0",
+  },
+  bat_min: {
+    label: "Min Battery (mV)",
+    hint: "0 - 10000 mV",
+    deviceType: "marshal",
+    inputType: "number",
+    min: 0,
+    max: 10000,
+    step: 1,
+    placeholder: "e.g. 3300",
+  },
 };
 
 const IGNORED_CONFIG_KEYS = new Set(["config", "subcommands", "uart"]);
+const MARSHAL_KEYS = new Set(["mode", "main_alt", "arm_alt", "apogee_delay", "bat_min"]);
 
 type LogKind = "sent" | "recv" | "error" | "info";
 type LogEntry = { id: number; time: string; text: string; kind: LogKind };
@@ -85,12 +149,14 @@ function getFieldSpec(key: string): FieldSpec {
 
 function extractConfigKeys(text: string): string[] {
   const keys = new Set<string>();
+  const lowerText = text.toLowerCase();
 
-  for (const rawLine of text.split("\n")) {
-    const line = rawLine.trim().toLowerCase();
+  for (const rawLine of lowerText.split("\n")) {
+    const line = rawLine.trim();
     if (!line) continue;
 
     const patterns = [
+      /^supported\s+([a-z][a-z0-9_]*)\b/,
       /^([a-z][a-z0-9_]*)$/,
       /^([a-z][a-z0-9_]*)\s*[:=-]/,
       /^config\s+([a-z][a-z0-9_]*)\b/,
@@ -99,17 +165,15 @@ function extractConfigKeys(text: string): string[] {
 
     for (const pattern of patterns) {
       const match = line.match(pattern);
-      if (match?.[1]) {
-        const key = match[1];
-        if (!IGNORED_CONFIG_KEYS.has(key)) {
-          keys.add(key);
-        }
+      const key = match?.[1];
+      if (key && !IGNORED_CONFIG_KEYS.has(key)) {
+        keys.add(key);
       }
     }
   }
 
   for (const key of Object.keys(KNOWN_FIELDS)) {
-    if (!IGNORED_CONFIG_KEYS.has(key) && text.toLowerCase().includes(key)) {
+    if (lowerText.includes(key)) {
       keys.add(key);
     }
   }
@@ -122,11 +186,25 @@ function extractConfigKeys(text: string): string[] {
   });
 }
 
+function detectDeviceType(lines: string[], keys: string[]): DeviceType {
+  const identity = lines.find((line) => line.startsWith("identity "));
+  if (identity === "identity marshal") {
+    return "marshal";
+  }
+
+  if (keys.some((key) => MARSHAL_KEYS.has(key))) {
+    return "marshal";
+  }
+
+  return "tracker";
+}
+
 export function ConfigTab({ connected }: ConfigTabProps) {
   const [probing, setProbing] = useState(false);
   const [probed, setProbed] = useState(false);
   const [available, setAvailable] = useState<AvailableConfigs>(NONE_AVAILABLE);
   const [availableKeys, setAvailableKeys] = useState<string[]>([]);
+  const [deviceType, setDeviceType] = useState<DeviceType>("tracker");
   const [sending, setSending] = useState(false);
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
 
@@ -168,10 +246,17 @@ export function ConfigTab({ connected }: ConfigTabProps) {
         if (abortRef.current) return;
 
         const text = accumulated.join("\n");
+        const lines = text
+          .toLowerCase()
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean);
         const keys = extractConfigKeys(text);
         const found = Object.fromEntries(keys.map((key) => [key, true]));
+
         setAvailable(found);
         setAvailableKeys(keys);
+        setDeviceType(detectDeviceType(lines, keys));
         setProbing(false);
         setProbed(true);
         setConfigValues((prev) => {
@@ -181,6 +266,11 @@ export function ConfigTab({ connected }: ConfigTabProps) {
           }
           return next;
         });
+
+        const identity = lines.find((line) => line.startsWith("identity "));
+        if (identity) {
+          addLog("recv", identity);
+        }
 
         if (keys.length > 0) {
           addLog("recv", `Available: ${keys.join(", ")}`);
@@ -198,6 +288,8 @@ export function ConfigTab({ connected }: ConfigTabProps) {
       setProbed(false);
       setAvailable(NONE_AVAILABLE);
       setAvailableKeys([]);
+      setDeviceType("tracker");
+      setConfigValues({});
       return;
     }
     probe();
@@ -238,62 +330,105 @@ export function ConfigTab({ connected }: ConfigTabProps) {
     setSending(false);
   }
 
+  const trackerActive = connected && deviceType === "tracker";
+  const marshalActive = connected && deviceType === "marshal";
+  const trackerKeys = availableKeys.filter((key) => !MARSHAL_KEYS.has(key));
+  const marshalKeys = availableKeys.filter((key) => MARSHAL_KEYS.has(key));
   const canSend =
     !sending &&
     availableKeys.some((key) => available[key] && (configValues[key] ?? "") !== "");
 
   return (
     <section className="content config-layout">
-      <div className="card config-card">
-        <div className="card-header">
-          <span>Device Configuration</span>
-          {connected && (
-            <button className="icon-button" onClick={probe} disabled={probing} title="Re-probe available configs">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: 4 }}>
-                <path d="M21 12a9 9 0 10-9 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M21 3v6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              {probing ? "Probing…" : "Probe"}
+      <div className="config-cards-row">
+        <div className={`card config-card ${!trackerActive ? "config-card-inactive" : ""}`}>
+          <div className="card-header">
+            <span>Tracker Configuration</span>
+            {trackerActive && (
+              <button className="icon-button" onClick={probe} disabled={probing} title="Re-probe available configs">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: 4 }}>
+                  <path d="M21 12a9 9 0 10-9 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M21 3v6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {probing ? "Probing…" : "Probe"}
+              </button>
+            )}
+          </div>
+
+          {!trackerActive && <p className="config-info">{connected ? "Connect to a tracker to configure these settings." : "Connect to a device to configure settings."}</p>}
+
+          <div className="config-fields">
+            {trackerActive && probed && trackerKeys.length === 0 && <p className="config-info">No tracker configuration fields were detected for this device.</p>}
+
+            {trackerKeys.map((key) => (
+              <ConfigInput
+                key={key}
+                fieldKey={key}
+                spec={getFieldSpec(key)}
+                enabled={trackerActive && !!available[key]}
+                probed={probed}
+                value={configValues[key] ?? ""}
+                onChange={(value) =>
+                  setConfigValues((prev) => ({
+                    ...prev,
+                    [key]: value,
+                  }))
+                }
+              />
+            ))}
+          </div>
+
+          <div className="config-actions">
+            <button className="primary" disabled={!trackerActive || !canSend} onClick={sendAll}>
+              {sending ? "Sending…" : "Send"}
             </button>
-          )}
+            <span className="config-actions-note">Settings are saved to device flash and apply after reboot.</span>
+          </div>
         </div>
 
-        {!connected && <p className="config-info">Connect to a device to configure settings.</p>}
+        <div className={`card config-card ${!marshalActive ? "config-card-inactive" : ""}`}>
+          <div className="card-header">
+            <span>Flight Computer Config</span>
+            {marshalActive && (
+              <button className="icon-button" onClick={probe} disabled={probing} title="Re-probe available configs">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: 4 }}>
+                  <path d="M21 12a9 9 0 10-9 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M21 3v6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {probing ? "Probing…" : "Probe"}
+              </button>
+            )}
+          </div>
 
-        <div className="config-fields">
-          {probed && availableKeys.length === 0 && <p className="config-info">No configurable fields were detected for this device.</p>}
+          {!marshalActive && <p className="config-info">{connected ? "Connect to Marshal to configure these settings." : "Connect to a device to configure settings."}</p>}
 
-          {availableKeys.map((key) => {
-            const spec = getFieldSpec(key);
-            const enabled = !!available[key];
-            return (
-              <ConfigField key={key} label={spec.label} hint={spec.hint} enabled={enabled} probed={probed}>
-                <input
-                  type={spec.inputType}
-                  step={spec.step}
-                  min={spec.min}
-                  max={spec.max}
-                  maxLength={spec.maxLength}
-                  value={configValues[key] ?? ""}
-                  onChange={(e) =>
-                    setConfigValues((prev) => ({
-                      ...prev,
-                      [key]: spec.transform ? spec.transform(e.target.value) : e.target.value,
-                    }))
-                  }
-                  disabled={!enabled}
-                  placeholder={enabled ? spec.placeholder ?? "" : "—"}
-                />
-              </ConfigField>
-            );
-          })}
-        </div>
+          <div className="config-fields">
+            {marshalActive && probed && marshalKeys.length === 0 && <p className="config-info">No flight computer configuration fields were detected for this device.</p>}
 
-        <div className="config-actions">
-          <button className="primary" disabled={!canSend} onClick={sendAll}>
-            {sending ? "Sending…" : "Send"}
-          </button>
-          <span className="config-actions-note">Settings are saved to device flash and apply after reboot.</span>
+            {marshalKeys.map((key) => (
+              <ConfigInput
+                key={key}
+                fieldKey={key}
+                spec={getFieldSpec(key)}
+                enabled={marshalActive && !!available[key]}
+                probed={probed}
+                value={configValues[key] ?? ""}
+                onChange={(value) =>
+                  setConfigValues((prev) => ({
+                    ...prev,
+                    [key]: value,
+                  }))
+                }
+              />
+            ))}
+          </div>
+
+          <div className="config-actions">
+            <button className="primary" disabled={!marshalActive || !canSend} onClick={sendAll}>
+              {sending ? "Sending…" : "Send"}
+            </button>
+            <span className="config-actions-note">Settings are saved to device flash and apply after reboot.</span>
+          </div>
         </div>
       </div>
 
@@ -320,6 +455,49 @@ export function ConfigTab({ connected }: ConfigTabProps) {
         </div>
       </div>
     </section>
+  );
+}
+
+function ConfigInput({
+  fieldKey,
+  spec,
+  enabled,
+  probed,
+  value,
+  onChange,
+}: {
+  fieldKey: string;
+  spec: FieldSpec;
+  enabled: boolean;
+  probed: boolean;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <ConfigField label={spec.label} hint={spec.hint} enabled={enabled} probed={probed}>
+      {spec.inputType === "select" ? (
+        <select value={value} onChange={(e) => onChange(e.target.value)} disabled={!enabled}>
+          <option value="">-- select --</option>
+          {spec.options?.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={spec.inputType}
+          step={spec.step}
+          min={spec.min}
+          max={spec.max}
+          maxLength={spec.maxLength}
+          value={value}
+          onChange={(e) => onChange(spec.transform ? spec.transform(e.target.value) : e.target.value)}
+          disabled={!enabled}
+          placeholder={enabled ? spec.placeholder ?? `Value for ${fieldKey}` : "—"}
+        />
+      )}
+    </ConfigField>
   );
 }
 

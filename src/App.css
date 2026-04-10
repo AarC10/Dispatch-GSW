@@ -454,7 +454,7 @@ right-column {
 
 .config-layout {
   display: grid;
-  grid-template-columns: 400px 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: 1fr;
   gap: 12px;
   padding: 12px;
@@ -462,8 +462,19 @@ right-column {
   align-items: start;
 }
 
+.config-cards-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
 .config-card {
   min-width: 0;
+}
+
+.config-card-inactive {
+  opacity: 0.72;
 }
 
 .config-log-card {
