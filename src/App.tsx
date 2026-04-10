@@ -13,7 +13,7 @@ function App() {
 
   const [portOptions, setPortOptions] = useState<SerialPortOption[]>([]);
   const [selectedPort, setSelectedPort] = useState("");
-  const [baud, setBaud] = useState(9600);
+  const [baud, setBaud] = useState(115200);
   const [connected, setConnected] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 

@@ -31,7 +31,7 @@ The connection controls are in the toolbar at the top of the window.
 | Control | Description                                                                   |
 |---|-------------------------------------------------------------------------------|
 | **Port** | Dropdown listing all detected serial ports. Click the refresh icon to rescan. |
-| **Baud** | Serial baud rate. Defaults to `9600`.                                         |
+| **Baud** | Serial baud rate. Defaults to `115200`.                                       |
 | **Connect** | Opens the selected port and begins listening for packets.                     |
 | **Disconnect** | Closes the port and stops packet reception.                                   |
 
@@ -40,7 +40,7 @@ The connection controls are in the toolbar at the top of the window.
 1. Plug in your LoRa receiver via USB.
 2. Click the refresh icon next to the Port dropdown to populate the list.
 3. Select your device's port from the dropdown.
-4. Set the correct baud rate for your firmware (should be `9600`).
+4. Set the correct baud rate for your firmware (defaults to `115200`).
 5. Click **Connect**.
 
 If the connection fails, a **"Failed to connect"** notice appears next to the Port dropdown. Double-check the port selection, baud rate, and that no other application has the port open.
