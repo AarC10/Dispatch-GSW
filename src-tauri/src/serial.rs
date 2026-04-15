@@ -221,6 +221,9 @@ pub fn open_port(app_handle: tauri::AppHandle, port_name: String, baud_rate: u32
             if src.longitude.is_some() {
                 dst.longitude = src.longitude;
             }
+            if src.altitude_ft.is_some() {
+                dst.altitude_ft = src.altitude_ft;
+            }
             if src.satellites_count.is_some() {
                 dst.satellites_count = src.satellites_count;
             }

@@ -120,6 +120,7 @@ function App() {
             callsign,
             lat: pktRaw.latitude ?? undefined,
             lon: pktRaw.longitude ?? undefined,
+            altitudeFt: pktRaw.altitude_ft ?? undefined,
             rssi: pktRaw.receiver_rssi ?? undefined,
             snr: pktRaw.receiver_snr ?? undefined,
             fixStatus: fixFromString(pktRaw.fix_status),

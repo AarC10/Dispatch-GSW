@@ -5,6 +5,7 @@ export type TelemetryPacket = {
   callsign?: string;
   lat?: number;
   lon?: number;
+  altitudeFt?: number;
   rssi?: number;
   snr?: number;
   fixStatus?: FixStatus;
@@ -23,4 +24,3 @@ export type SerialPortOption = {
   portName: string;
   label: string;
 };
-

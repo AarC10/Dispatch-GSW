@@ -86,6 +86,7 @@ export function TrackingTab({ trackers, packets, trackerColors, onClearPackets }
       node_id: packet.nodeId,
       lat: packet.lat,
       lon: packet.lon,
+      altitude_ft: packet.altitudeFt,
       rssi: packet.rssi,
       snr: packet.snr,
       fix_status: packet.fixStatus,
@@ -150,6 +151,9 @@ export function TrackingTab({ trackers, packets, trackerColors, onClearPackets }
                             {markerPos.lat.toFixed(6)}, {markerPos.lon.toFixed(6)}
                           </div>
                           <div>
+                            Altitude: {latest.altitudeFt === undefined ? "—" : `${latest.altitudeFt} ft`}
+                          </div>
+                          <div>
                             RSSI: {latest.rssi ?? "—"} SNR: {latest.snr ?? "—"}
                           </div>
                           <div>
@@ -198,6 +202,7 @@ export function TrackingTab({ trackers, packets, trackerColors, onClearPackets }
                   <th>Longitude</th>
                   <th>RSSI (dBm)</th>
                   <th>SNR (dB)</th>
+                  <th>Altitude (ft)</th>
                   <th>Fix</th>
                   <th>Satellites in View</th>
                 </tr>
@@ -211,6 +216,7 @@ export function TrackingTab({ trackers, packets, trackerColors, onClearPackets }
                     <td>{packet.lon === undefined ? "—" : packet.lon.toFixed(6)}</td>
                     <td>{packet.rssi ?? "—"}</td>
                     <td>{packet.snr ?? "—"}</td>
+                    <td>{packet.altitudeFt ?? "—"}</td>
                     <td>{packet.fixStatus ?? "?"}</td>
                     <td>{packet.sats ?? "—"}</td>
                   </tr>
@@ -298,6 +304,10 @@ export function TrackingTab({ trackers, packets, trackerColors, onClearPackets }
                               <span>
                                 {latest.lat === undefined ? "—" : latest.lat.toFixed(6)}, {latest.lon === undefined ? "—" : latest.lon.toFixed(6)}
                               </span>
+                            </div>
+                            <div className="bubble-row">
+                              <span>Altitude</span>
+                              <span>{latest.altitudeFt === undefined ? "—" : `${latest.altitudeFt} ft`}</span>
                             </div>
                             <div className="bubble-row">
                               <span>RSSI / SNR</span>

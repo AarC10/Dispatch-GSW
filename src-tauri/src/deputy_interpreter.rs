@@ -20,11 +20,12 @@ lazy_static! {
     // Packet header - licensed no-fix packet
     // Matches: "KD2YIE-1: (13 bytes | -80 dBm | 7 dB):" and "KD2YIE: (...)"
     pub static ref RE_HEADER_LICENSED_NOFIX: Regex = Regex::new(
-        r"(?i)^([A-Z0-9/\-]{3,12})(?:-(\d+))?:\s*\(\d+\s*bytes\s*\|\s*(-?\d+)\s*dBm\s*\|\s*(-?\d+)\s*dB"
+        r"(?i)(?:^|:\s+)([A-Z0-9/]{3,12})(?:-(\d+))?:\s*\(\d+\s*bytes\s*\|\s*(-?\d+)\s*dBm\s*\|\s*(-?\d+)\s*dB"
     ).unwrap();
 
     pub static ref RE_LAT: Regex = Regex::new(r"(?i)latitude:\s*(-?\d+\.\d+)").unwrap();
     pub static ref RE_LON: Regex = Regex::new(r"(?i)longitude:\s*(-?\d+\.\d+)").unwrap();
+    pub static ref RE_ALT: Regex = Regex::new(r"(?i)altitude:\s*(-?\d+)\s*ft\b").unwrap();
     pub static ref RE_SATS: Regex = Regex::new(r"(?i)satellites count:\s*(\d+)").unwrap();
     pub static ref RE_FIX: Regex = Regex::new(r"(?i)fix status:\s*(\S+(?:\s+\S+)?)").unwrap();
     pub static ref RE_NOFIX: Regex = Regex::new(r"(?i)no fix acquired").unwrap();
@@ -62,6 +63,9 @@ pub fn parse_zephyr_line(line: &str) -> Result<DataPacket, ParseError> {
     if let Some(cap) = RE_LON.captures(line) {
         pkt.longitude = cap.get(1).and_then(|m| m.as_str().parse::<f32>().ok());
     }
+    if let Some(cap) = RE_ALT.captures(line) {
+        pkt.altitude_ft = cap.get(1).and_then(|m| m.as_str().parse::<i32>().ok());
+    }
     if let Some(cap) = RE_SATS.captures(line) {
         pkt.satellites_count = cap.get(1).and_then(|m| m.as_str().parse::<u8>().ok());
     }
@@ -89,6 +93,7 @@ pub fn parse_zephyr_line(line: &str) -> Result<DataPacket, ParseError> {
     let meaningful = pkt.node_id.is_some()
         || pkt.latitude.is_some()
         || pkt.longitude.is_some()
+        || pkt.altitude_ft.is_some()
         || pkt.receiver_rssi.is_some()
         || pkt.receiver_snr.is_some()
         || pkt.satellites_count.is_some()
@@ -99,5 +104,39 @@ pub fn parse_zephyr_line(line: &str) -> Result<DataPacket, ParseError> {
         Ok(pkt)
     } else {
         Err(ParseError::NoMatch)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_licensed_nofix_header_with_zephyr_log_prefix() {
+        let pkt = parse_zephyr_line(
+            "[00:01:11.262,000] <inf> LoraTransceiver: KD2YIE-4: (13 bytes | -23 dBm | 8 dB):",
+        )
+        .expect("expected licensed header to parse");
+
+        assert_eq!(pkt.callsign.as_deref(), Some("KD2YIE"));
+        assert_eq!(pkt.node_id, Some(4));
+        assert_eq!(pkt.receiver_rssi, Some(-23));
+        assert_eq!(pkt.receiver_snr, Some(8));
+    }
+
+    #[test]
+    fn parses_nofix_line_with_zephyr_log_prefix() {
+        let pkt = parse_zephyr_line("[00:01:11.270,000] <inf> LoraTransceiver:       No fix acquired!")
+            .expect("expected no-fix line to parse");
+
+        assert_eq!(pkt.fix_status, FixStatus::NoFix);
+    }
+
+    #[test]
+    fn parses_altitude_line_with_zephyr_log_prefix() {
+        let pkt = parse_zephyr_line("[00:01:11.268,000] <inf> LoraTransceiver: \tAltitude: -138 ft")
+            .expect("expected altitude line to parse");
+
+        assert_eq!(pkt.altitude_ft, Some(-138));
     }
 }

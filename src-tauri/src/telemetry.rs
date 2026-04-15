@@ -20,6 +20,7 @@ pub struct DataPacket {
     pub node_id: Option<u8>,
     pub latitude: Option<f32>,
     pub longitude: Option<f32>,
+    pub altitude_ft: Option<i32>,
     pub satellites_count: Option<u8>,
     pub fix_status: FixStatus,
     pub receiver_rssi: Option<i16>,
