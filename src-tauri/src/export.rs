@@ -12,6 +12,7 @@ pub struct FrontendPacket {
     pub node_id: String,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
+    pub altitude_ft: Option<i32>,
     pub rssi: Option<f64>,
     pub snr: Option<f64>,
     pub fix_status: Option<String>,
@@ -29,6 +30,8 @@ struct CsvRow<'a> {
     lat: String,
     #[serde(rename = "Longitude")]
     lon: String,
+    #[serde(rename = "Altitude (ft)")]
+    altitude_ft: String,
     #[serde(rename = "RSSI (dBm)")]
     rssi: String,
     #[serde(rename = "SNR (dB)")]
@@ -67,6 +70,7 @@ fn write_csv(path: &PathBuf, packets: &[FrontendPacket]) -> Result<(), Box<dyn s
             node: &pkt.node_id,
             lat: pkt.lat.map(|v| format!("{v:.6}")) .unwrap_or_default(),
             lon: pkt.lon.map(|v| format!("{v:.6}")) .unwrap_or_default(),
+            altitude_ft: pkt.altitude_ft.map(|v| v.to_string()).unwrap_or_default(),
             rssi: pkt.rssi.map(|v| format!("{v}")) .unwrap_or_default(),
             snr: pkt.snr.map(|v| format!("{v}")) .unwrap_or_default(),
             fix: pkt.fix_status.clone().unwrap_or_default(),

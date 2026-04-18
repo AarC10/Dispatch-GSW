@@ -198,4 +198,4 @@ To export the current packet log as a CSV file:
 2. Click the **Save** button (floppy disk icon) in the "Latest packets" card header.
 3. Choose a save location in the file dialog. The default filename includes a timestamp, e.g. `packets-2026-01-01T00-00-00-000Z.csv`.
 
-The exported CSV contains one row per packet with columns: `node_id`, `lat`, `lon`, `rssi`, `snr`, `fix_status`, `sats`, `ts`.
+The exported CSV contains one row per packet with columns: `node_id`, `lat`, `lon`, `altitude_ft`, `rssi`, `snr`, `fix_status`, `sats`, `ts`.
